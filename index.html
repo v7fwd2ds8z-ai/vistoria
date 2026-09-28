@@ -733,7 +733,7 @@
     h += '<div class="toolbar"><span class="hint">Toque na planta para marcar um defeito. Toque num número para abrir.</span>' +
       '<button class="btn secondary zoombtn" data-act="zoom-" aria-label="Diminuir">−</button>' +
       '<button class="btn secondary zoombtn" data-act="zoom+" aria-label="Aumentar">+</button></div>';
-    h += '<div id="planScroll"><div id="planWrap" style="width:' + (state.zoom*100) + '%"><img id="planImg" src="' + esc(v._plantaUrl || '') + '" alt="Planta" draggable="false">' + pinsHtml(v) + '</div></div>';
+    h += '<div id="planScroll"><div id="planWrap" style="width:' + (state.zoom*100) + '%"><img id="planImg" src="' + esc(v._plantaUrl || '') + '" alt="Planta" draggable="false" crossorigin="anonymous">' + pinsHtml(v) + '</div></div>';
     h += '<h2 class="sec">Defeitos</h2>';
     if(!ds.length) h += '<div class="empty"><p>Nenhum defeito marcado ainda.</p></div>';
     h += ds.map(function(d){
@@ -759,7 +759,7 @@
     var ds = (v.defeitos || []).slice().sort(function(a,b){ return a.n - b.n; });
     var h = '<div class="no-print" style="display:flex;justify-content:space-between;gap:10px;margin-bottom:14px"><button class="link" data-act="voltar-v">Voltar</button><button class="btn small" data-act="imprimir">Imprimir ou salvar em PDF</button></div>';
     h += '<div class="report"><h1>Vistoria de entrega</h1><div class="meta">' + esc(v.titulo) + ', ' + fmtDate(v.created_at) + '. ' + ds.length + (ds.length === 1 ? ' ponto registrado.' : ' pontos registrados.') + '</div>';
-    h += '<div class="planbox"><img src="' + esc(v._plantaUrl || '') + '" alt="Planta">' + ds.map(function(d){
+    h += '<div class="planbox"><img src="' + esc(v._plantaUrl || '') + '" alt="Planta" crossorigin="anonymous">' + ds.map(function(d){
       return '<span class="pin p-' + esc(d.prioridade) + '" style="left:' + (d.x*100) + '%;top:' + (d.y*100) + '%">' + d.n + '</span>';
     }).join('') + '</div>';
     h += ds.map(function(d){
