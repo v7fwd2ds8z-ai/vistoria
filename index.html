@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F5F2EC">
+<title>Vistoria de entrega</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  :root{
+    --paper:#F5F2EC; --paper-alt:#EBE6DB; --surface:#FFFFFF;
+    --ink:#23282B; --ink-soft:#63696C; --line:#D8D2C4;
+    --blue:#2D5B7C; --blue-soft:#E4ECF1;
+    --orange:#D9530B; --orange-soft:#FBE6D8;
+    --amber:#B07E22; --amber-soft:#F4EAD4;
+    --green:#48725A; --green-soft:#E3ECE6;
+    --radius:3px;
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#181B1D; --paper-alt:#22262A; --surface:#202427;
+      --ink:#ECE9E2; --ink-soft:#A3A8AB; --line:#3A3F43;
+      --blue:#7FB0D1; --blue-soft:#20303B;
+      --orange:#F08A4B; --orange-soft:#3A2618;
+      --amber:#D9A94A; --amber-soft:#382E17;
+      --green:#7FB897; --green-soft:#1E2E25;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#181B1D; --paper-alt:#22262A; --surface:#202427;
+    --ink:#ECE9E2; --ink-soft:#A3A8AB; --line:#3A3F43;
+    --blue:#7FB0D1; --blue-soft:#20303B;
+    --orange:#F08A4B; --orange-soft:#3A2618;
+    --amber:#D9A94A; --amber-soft:#382E17;
+    --green:#7FB897; --green-soft:#1E2E25;
+  }
+  html{ scroll-padding-top:env(safe-area-inset-top,0px); }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,sans-serif;
+    font-size:14px; line-height:1.5; -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3{ font-family:'Space Grotesk',sans-serif; margin:0; }
+  .app{ max-width:860px; margin:0 auto; padding:20px 16px 90px; }
+  img{ max-width:100%; }
+  button{ font-family:inherit; }
+  .btn{ background:var(--ink); color:var(--paper); border:none; border-radius:var(--radius); padding:10px 16px; font-size:14px; font-weight:500; cursor:pointer; }
+  .btn:disabled{ opacity:.5; cursor:default; }
+  .btn.secondary{ background:transparent; color:var(--ink); border:1px solid var(--line); }
+  .btn.blue{ background:var(--blue); color:var(--paper); }
+  .btn.small{ padding:6px 12px; font-size:13px; }
+  .link{ background:none; border:none; padding:0; color:var(--blue); cursor:pointer; text-decoration:underline; font-size:13px; }
+  .link.danger{ color:var(--orange); }
+  input, select, textarea{
+    font-family:inherit; font-size:15px; color:var(--ink); background:var(--surface);
+    border:1px solid var(--line); border-radius:var(--radius); padding:9px 10px; width:100%;
+  }
+  input:focus, select:focus, textarea:focus, button:focus-visible{ outline:2px solid var(--blue); outline-offset:1px; }
+  textarea{ min-height:84px; resize:vertical; }
+  label.lbl{ display:block; font-size:12.5px; color:var(--ink-soft); margin:12px 0 5px; }
+
+  .userbar{ display:flex; justify-content:space-between; gap:10px; align-items:center; font-size:12.5px; color:var(--ink-soft); margin-bottom:8px; flex-wrap:wrap; }
+  .userbar span{ display:inline-flex; align-items:center; gap:6px; }
+  .top{ display:flex; align-items:flex-end; justify-content:space-between; gap:12px; margin-bottom:18px; flex-wrap:wrap; }
+  .top h1{ font-size:24px; font-weight:700; letter-spacing:-.01em; }
+  .sub{ color:var(--ink-soft); font-size:13px; margin-top:2px; }
+  .back{ margin-bottom:10px; }
+
+  .cards{ display:flex; flex-direction:column; gap:8px; }
+  .card{ background:var(--surface); border:1px solid var(--line); border-left:4px solid var(--blue); border-radius:var(--radius); padding:13px 14px; cursor:pointer; display:flex; justify-content:space-between; gap:12px; align-items:center; }
+  .card.done{ border-left-color:var(--green); }
+  .card:hover{ background:var(--paper-alt); }
+  .card .t{ font-weight:600; font-size:15px; }
+  .card .m{ color:var(--ink-soft); font-size:12.5px; margin-top:2px; }
+  .chip{ font-size:11.5px; padding:2px 9px; border-radius:10px; white-space:nowrap; background:var(--blue-soft); color:var(--blue); }
+  .chip.green{ background:var(--green-soft); color:var(--green); }
+  .chip.orange{ background:var(--orange-soft); color:var(--orange); }
+  .chip.amber{ background:var(--amber-soft); color:var(--amber); }
+  .empty{ border:1px dashed var(--line); border-radius:var(--radius); padding:34px 18px; text-align:center; color:var(--ink-soft); }
+  .empty p{ margin:0 0 14px; }
+  .notice{ background:var(--amber-soft); color:var(--ink); border-left:3px solid var(--amber); padding:10px 12px; border-radius:var(--radius); margin-bottom:14px; font-size:13px; }
+  .notice.err{ background:var(--orange-soft); border-left-color:var(--orange); }
+  .notice.ok{ background:var(--green-soft); border-left-color:var(--green); }
+
+  .toolbar{ display:flex; gap:8px; align-items:center; margin:10px 0 8px; flex-wrap:wrap; }
+  .toolbar .hint{ color:var(--ink-soft); font-size:12.5px; flex:1; min-width:180px; }
+  .zoombtn{ width:34px; height:34px; padding:0; font-size:18px; line-height:1; }
+  #planScroll{ overflow:auto; max-height:64vh; border:1px solid var(--line); border-radius:var(--radius); background:var(--surface); }
+  #planWrap{ position:relative; }
+  #planImg{ display:block; width:100%; height:auto; user-select:none; -webkit-user-drag:none; background:var(--paper-alt); min-height:120px; }
+  .pin{
+    position:absolute; transform:translate(-50%,-50%); width:28px; height:28px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Mono',monospace;
+    font-size:12.5px; font-weight:600; color:#fff; border:2px solid #fff; padding:0; cursor:pointer;
+    box-shadow:0 1px 4px rgba(0,0,0,.35); background:var(--amber);
+  }
+  .pin.p-Alta{ background:var(--orange); }
+  .pin.p-Média{ background:var(--amber); }
+  .pin.p-Baixa{ background:var(--blue); }
+  .pin.sent{ box-shadow:0 0 0 3px var(--green), 0 1px 4px rgba(0,0,0,.35); }
+  .pin.pending{ background:transparent; border:2px dashed var(--orange); color:var(--orange); box-shadow:none; pointer-events:none; }
+
+  h2.sec{ font-size:16px; margin:22px 0 10px; }
+  .def{ background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:11px 12px; display:flex; gap:12px; align-items:flex-start; margin-bottom:8px; }
+  .def .n{ font-family:'IBM Plex Mono',monospace; font-weight:600; min-width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; background:var(--amber); flex-shrink:0; }
+  .def .n.p-Alta{ background:var(--orange); } .def .n.p-Baixa{ background:var(--blue); }
+  .def .body{ flex:1; min-width:0; cursor:pointer; }
+  .def .amb{ font-weight:600; }
+  .def .desc{ color:var(--ink-soft); font-size:13.5px; white-space:pre-wrap; }
+  .def .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:6px; }
+  .def img.th{ width:64px; height:64px; object-fit:cover; border-radius:var(--radius); border:1px solid var(--line); flex-shrink:0; cursor:pointer; background:var(--paper-alt); }
+  .actions{ position:fixed; left:0; right:0; bottom:0; background:var(--paper); border-top:1px solid var(--line); padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px)); display:flex; gap:10px; justify-content:center; z-index:20; }
+  .actions .btn{ flex:1; max-width:340px; }
+  .zone{ margin-top:26px; padding-top:14px; border-top:1px solid var(--line); font-size:12.5px; color:var(--ink-soft); }
+
+  .overlay{ position:fixed; inset:0; background:rgba(20,24,26,.45); z-index:40; display:flex; align-items:flex-end; justify-content:center; animation:fade .15s ease; }
+  .overlay[hidden]{ display:none; }
+  @keyframes fade{ from{opacity:0} to{opacity:1} }
+  .sheet{ background:var(--paper); width:100%; max-width:560px; max-height:90vh; overflow:auto; border-radius:10px 10px 0 0; padding:18px 18px calc(18px + env(safe-area-inset-bottom,0px)); animation:up .18s ease; }
+  @keyframes up{ from{transform:translateY(14px);opacity:.6} to{transform:none;opacity:1} }
+  .sheet h2{ font-size:18px; margin-bottom:4px; }
+  .sheet .foto{ margin-top:6px; }
+  .sheet .foto img{ display:block; width:100%; max-height:260px; object-fit:contain; background:var(--paper-alt); border-radius:var(--radius); margin-bottom:8px; }
+  .sheet .btns{ display:flex; gap:10px; justify-content:flex-end; margin-top:16px; align-items:center; }
+  .sheet .btns .spacer{ flex:1; }
+
+  .busy{ position:fixed; left:12px; right:12px; top:calc(10px + env(safe-area-inset-top,0px)); background:var(--ink); color:var(--paper); padding:10px 14px; border-radius:var(--radius); z-index:60; font-size:13.5px; text-align:center; }
+  .toast{ position:fixed; left:50%; transform:translateX(-50%); bottom:calc(84px + env(safe-area-inset-bottom,0px)); background:var(--ink); color:var(--paper); padding:10px 16px; border-radius:var(--radius); z-index:60; font-size:13.5px; max-width:90vw; text-align:center; }
+  .toast.err{ background:var(--orange); color:#fff; }
+  .toast[hidden], .busy[hidden]{ display:none; }
+
+  .report h1{ font-size:22px; }
+  .report .meta{ color:var(--ink-soft); margin:4px 0 14px; }
+  .report .planbox{ position:relative; border:1px solid var(--line); margin-bottom:16px; }
+  .report .planbox img{ display:block; width:100%; height:auto; }
+  .rdef{ display:flex; gap:12px; padding:10px 0; border-top:1px solid var(--line); page-break-inside:avoid; break-inside:avoid; }
+  .rdef img{ width:150px; height:112px; object-fit:cover; border:1px solid var(--line); flex-shrink:0; }
+  .sign{ display:flex; gap:40px; margin-top:54px; }
+  .sign div{ flex:1; border-top:1px solid var(--ink); padding-top:6px; font-size:12.5px; color:var(--ink-soft); text-align:center; }
+
+  @media (max-width:560px){
+    .rdef{ flex-direction:column; }
+    .rdef img{ width:100%; height:auto; max-height:220px; }
+  }
+  @media print{
+    body{ background:#fff; color:#000; }
+    .no-print, .actions, .toast, .busy, .userbar{ display:none !important; }
+    .app{ padding:0; max-width:none; }
+    :root{ padding:0; }
+    .sign div{ border-top-color:#000; color:#333; }
+  }
+</style>
+</head>
+<body>
+<div class="app" id="root"></div>
+<div class="overlay" id="overlay" hidden></div>
+<div class="busy" id="busy" hidden></div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function(){
+  'use strict';
+
+  var SUPABASE_URL = 'COLE_AQUI_A_URL_DO_SUPABASE';
+  var SUPABASE_ANON_KEY = 'COLE_AQUI_A_ANON_KEY_DO_SUPABASE';
+  var API_BASE = 'COLE_AQUI_A_URL_DO_WORKER';
+  var BUCKET = 'vistoria-files';
+
+  var SUPA_OK = /^https:\/\/\S+\.supabase\.co$/.test(SUPABASE_URL) && SUPABASE_ANON_KEY.length > 20;
+  var CLICKUP_OK = /^https:\/\/\S+$/.test(API_BASE);
+  API_BASE = API_BASE.replace(/\/+$/, '');
+
+  var supabase = SUPA_OK ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+  var PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+  var PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  var PRIO_NUM = { 'Alta':2, 'Média':3, 'Baixa':4 };
+  var AMBIENTES = ['Sala','Cozinha','Área de serviço','Circulação','Quarto 1','Quarto 2','Suíte','Banheiro social','Banheiro da suíte','Lavabo','Sacada / terraço','Garagem'];
+  var SIGNED_URL_TTL = 6 * 3600;
+
+  var state = {
+    view:'home', session:null, authChecked:false,
+    authEmail:'', authSent:false, authBusy:false, authError:'',
+    token:null, user:null, cuError:'',
+    vistorias:[], dataReady:false, dataError:null,
+    currentId:null, zoom:1, sheet:null, confirmDelV:false,
+    teams:[], teamId:null, spaces:[], spaceId:null, folders:null, hierError:null, hierLoading:false,
+    novo:{ folderId:'', listId:'', file:null }
+  };
+
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+  function fmtDate(iso){ if(!iso) return ''; var d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString('pt-BR'); }
+  function shorten(s, n){ s = String(s||'').replace(/\s+/g,' ').trim(); return s.length > n ? s.slice(0, n-1) + '…' : s; }
+  function cur(){ return state.vistorias.filter(function(v){ return v.id === state.currentId; })[0] || null; }
+  function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+  function lsSet(k, v){ try{ if(v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); }catch(e){} }
+  var toastTimer;
+  function toast(msg, err){
+    var t = $('toast'); t.textContent = msg; t.className = 'toast' + (err ? ' err' : ''); t.hidden = false;
+    clearTimeout(toastTimer); toastTimer = setTimeout(function(){ t.hidden = true; }, err ? 5200 : 2600);
+  }
+  function busy(msg){ var b = $('busy'); if(msg){ b.textContent = msg; b.hidden = false; } else { b.hidden = true; } }
+
+  var urlCache = {};
+  async function resolveUrl(path){
+    if(!path) return '';
+    var now = Date.now(), c = urlCache[path];
+    if(c && c.exp > now + 60000) return c.url;
+    try{
+      var r = await supabase.storage.from(BUCKET).createSignedUrl(path, SIGNED_URL_TTL);
+      if(r.error || !r.data) return c ? c.url : '';
+      urlCache[path] = { url: r.data.signedUrl, exp: now + SIGNED_URL_TTL * 1000 };
+      return r.data.signedUrl;
+    }catch(e){ return c ? c.url : ''; }
+  }
+  async function resolveAllUrls(vistorias){
+    var paths = {};
+    vistorias.forEach(function(v){
+      if(v.planta_path) paths[v.planta_path] = 1;
+      (v.defeitos || []).forEach(function(d){ if(d.foto_path) paths[d.foto_path] = 1; });
+    });
+    var list = Object.keys(paths);
+    var urls = await Promise.all(list.map(resolveUrl));
+    var map = {}; list.forEach(function(p,i){ map[p] = urls[i]; });
+    vistorias.forEach(function(v){
+      v._plantaUrl = v.planta_path ? map[v.planta_path] : '';
+      (v.defeitos || []).forEach(function(d){ d._fotoUrl = d.foto_path ? map[d.foto_path] : ''; });
+    });
+  }
+
+  function loadImage(src){
+    return new Promise(function(res, rej){ var im = new Image(); im.onload = function(){ res(im); }; im.onerror = function(){ rej(new Error('img')); }; im.src = src; });
+  }
+  function canvasToJpeg(canvas, maxBytes){
+    var qs = [0.85, 0.75, 0.65, 0.55, 0.45, 0.35];
+    var c = canvas;
+    function toBlob(cv, q){ return new Promise(function(res){ cv.toBlob(res, 'image/jpeg', q); }); }
+    return (async function(){
+      for(var round = 0; round < 8; round++){
+        for(var i = 0; i < qs.length; i++){
+          var b = await toBlob(c, qs[i]);
+          if(b && b.size <= maxBytes) return b;
+        }
+        var n = document.createElement('canvas');
+        n.width = Math.max(200, Math.round(c.width * 0.85)); n.height = Math.max(150, Math.round(c.height * 0.85));
+        n.getContext('2d').drawImage(c, 0, 0, n.width, n.height);
+        c = n;
+      }
+      return await toBlob(c, 0.35);
+    })();
+  }
+  async function compressImage(file, maxDim, maxBytes){
+    var src, w, h, bmp = null, im = null;
+    if(window.createImageBitmap){
+      try{ bmp = await createImageBitmap(file, { imageOrientation:'from-image' }); }catch(e){ bmp = null; }
+    }
+    if(bmp){ src = bmp; w = bmp.width; h = bmp.height; }
+    else{
+      var url = URL.createObjectURL(file);
+      try{ im = await loadImage(url); }finally{ URL.revokeObjectURL(url); }
+      src = im; w = im.naturalWidth; h = im.naturalHeight;
+    }
+    var sc = Math.min(1, maxDim / Math.max(w, h));
+    var cv = document.createElement('canvas');
+    cv.width = Math.round(w * sc); cv.height = Math.round(h * sc);
+    var ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0,0,cv.width,cv.height);
+    ctx.drawImage(src, 0, 0, cv.width, cv.height);
+    return canvasToJpeg(cv, maxBytes);
+  }
+  function loadPdfJs(){
+    if(window.pdfjsLib) return Promise.resolve();
+    return new Promise(function(res, rej){
+      var s = document.createElement('script'); s.src = PDFJS;
+      s.onload = function(){ window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER; res(); };
+      s.onerror = function(){ rej(new Error('pdfjs')); };
+      document.head.appendChild(s);
+    });
+  }
+  async function pdfToJpeg(file){
+    await loadPdfJs();
+    var buf = await file.arrayBuffer();
+    var pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
+    var page = await pdf.getPage(1);
+    var v1 = page.getViewport({ scale:1 });
+    var scale = Math.min(3, 2000 / v1.width);
+    var vp = page.getViewport({ scale: scale });
+    var cv = document.createElement('canvas'); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+    var ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0,0,cv.width,cv.height);
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    return canvasToJpeg(cv, 8 * 1024 * 1024);
+  }
+  async function makePlantaAnotada(v, d){
+    var img = await loadImage(v._plantaUrl);
+    var W = Math.min(img.naturalWidth, 1600), H = Math.round(img.naturalHeight * (W / img.naturalWidth));
+    var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    var ctx = cv.getContext('2d'); ctx.drawImage(img, 0, 0, W, H);
+    var r = Math.max(10, W * 0.011);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    (v.defeitos || []).forEach(function(p){
+      if(p.id === d.id) return;
+      var x = p.x * W, y = p.y * H;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fillStyle = 'rgba(90,96,100,.55)'; ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold ' + Math.round(r * 1.05) + 'px sans-serif'; ctx.fillText(String(p.n), x, y);
+    });
+    var x0 = d.x * W, y0 = d.y * H, R = r * 1.9;
+    ctx.beginPath(); ctx.arc(x0, y0, R * 1.5, 0, Math.PI*2); ctx.strokeStyle = 'rgba(217,83,11,.55)'; ctx.lineWidth = Math.max(3, r*0.35); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x0, y0, R, 0, Math.PI*2); ctx.fillStyle = '#D9530B'; ctx.fill();
+    ctx.lineWidth = Math.max(2, r*0.25); ctx.strokeStyle = '#fff'; ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold ' + Math.round(R * 1.1) + 'px sans-serif'; ctx.fillText(String(d.n), x0, y0);
+    return canvasToJpeg(cv, 600 * 1024);
+  }
+
+  function sbErrorText(error){
+    if(!error) return 'Erro desconhecido.';
+    var m = error.message || String(error);
+    if(/JWT|expired|invalid.*token/i.test(m)) return 'Sua sessão expirou. Entre de novo.';
+    return m;
+  }
+  async function loadAll(){
+    state.dataError = null;
+    try{
+      var vr = await supabase.from('vistorias').select('*').order('created_at', { ascending:false });
+      if(vr.error) throw vr.error;
+      var dr = await supabase.from('defeitos').select('*').order('n', { ascending:true });
+      if(dr.error) throw dr.error;
+      var byV = {};
+      (dr.data || []).forEach(function(d){ (byV[d.vistoria_id] = byV[d.vistoria_id] || []).push(d); });
+      var rows = (vr.data || []).map(function(v){ v.defeitos = byV[v.id] || []; return v; });
+      await resolveAllUrls(rows);
+      state.vistorias = rows;
+      state.dataReady = true;
+    }catch(e){
+      state.dataReady = true;
+      state.dataError = 'Não consegui carregar os dados: ' + sbErrorText(e);
+    }
+    render();
+  }
+  var reloadTimer = null;
+  function scheduleReload(){ clearTimeout(reloadTimer); reloadTimer = setTimeout(loadAll, 400); }
+  var channels = [];
+  function startRealtime(){
+    try{
+      channels.push(supabase.channel('vistorias-rt').on('postgres_changes', { event:'*', schema:'public', table:'vistorias' }, scheduleReload).subscribe());
+      channels.push(supabase.channel('defeitos-rt').on('postgres_changes', { event:'*', schema:'public', table:'defeitos' }, scheduleReload).subscribe());
+    }catch(e){}
+  }
+  function stopRealtime(){
+    channels.forEach(function(c){ try{ supabase.removeChannel(c); }catch(e){} });
+    channels = [];
+  }
+
+  async function insertVistoria(row){
+    var r = await supabase.from('vistorias').insert(row).select().single();
+    if(r.error) throw new Error(sbErrorText(r.error));
+    return r.data;
+  }
+  async function updateVistoria(id, patch){
+    patch.updated_at = new Date().toISOString();
+    var r = await supabase.from('vistorias').update(patch).eq('id', id);
+    if(r.error) throw new Error(sbErrorText(r.error));
+  }
+  async function deleteVistoriaRow(id){
+    var r = await supabase.from('vistorias').delete().eq('id', id);
+    if(r.error) throw new Error(sbErrorText(r.error));
+  }
+  async function insertDefeito(row){
+    var r = await supabase.from('defeitos').insert(row).select().single();
+    if(r.error) throw new Error(sbErrorText(r.error));
+    return r.data;
+  }
+  async function updateDefeito(id, patch){
+    patch.updated_at = new Date().toISOString();
+    var r = await supabase.from('defeitos').update(patch).eq('id', id);
+    if(r.error) throw new Error(sbErrorText(r.error));
+  }
+  async function deleteDefeitoRow(id){
+    var r = await supabase.from('defeitos').delete().eq('id', id);
+    if(r.error) throw new Error(sbErrorText(r.error));
+  }
+  async function uploadFile(blob, prefix){
+    var path = prefix + '/' + uid() + '.jpg';
+    var r = await supabase.storage.from(BUCKET).upload(path, blob, { contentType:'image/jpeg', upsert:false });
+    if(r.error) throw new Error('Falha ao guardar arquivo: ' + sbErrorText(r.error));
+    return path;
+  }
+
+  async function cu(path, opts){
+    opts = opts || {};
+    var headers = { 'Authorization': 'Bearer ' + state.token };
+    var body;
+    if(opts.json){ headers['Content-Type'] = 'application/json'; body = JSON.stringify(opts.json); }
+    else if(opts.form){ body = opts.form; }
+    var res;
+    try{ res = await fetch(API_BASE + '/api/' + path, { method: opts.method || 'GET', headers: headers, body: body }); }
+    catch(e){ throw { code:'network', message:'Sem conexão com o servidor do ClickUp.' }; }
+    var text = await res.text(), data = null;
+    try{ data = text ? JSON.parse(text) : null; }catch(e){}
+    if(res.status === 401) throw { code:'auth', status:401, message:'Sua sessão do ClickUp expirou. Conecte de novo.' };
+    if(!res.ok) throw { code:'http', status:res.status, message:(data && (data.err || data.error)) ? String(data.err || data.error) : ('O ClickUp respondeu com erro ' + res.status + '.') };
+    return data;
+  }
+  function ambiguous(e){ return e && (e.code === 'network' || (e.status && e.status >= 500)); }
+  function stopErr(e){ return e && (e.code === 'auth' || e.code === 'network'); }
+
+  function readClickUpHash(){
+    var h = (location.hash || '').replace(/^#/, ''); if(!h) return;
+    var p = new URLSearchParams(h);
+    var consumed = false;
+    if(p.has('token')){ lsSet('vst_token', p.get('token')); consumed = true; }
+    if(p.has('erro')){ state.cuError = p.get('erro'); consumed = true; }
+    if(consumed){ try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){} }
+  }
+  function clickUpLogout(msg){
+    lsSet('vst_token', null);
+    state.token = null; state.user = null; state.teams = []; state.spaces = []; state.folders = null;
+    state.cuError = msg || ''; render();
+  }
+  async function fetchClickUpUser(){
+    try{ var d = await cu('user'); state.user = d && d.user; render(); }
+    catch(e){ if(e.code === 'auth') clickUpLogout(e.message); }
+  }
+
+  async function loadHierarchy(){
+    state.hierLoading = true; state.hierError = null; render();
+    try{
+      var t = await cu('team'); state.teams = (t && t.teams) || [];
+      if(!state.teams.length) throw { message:'Nenhum workspace autorizado. Saia do ClickUp e entre de novo, selecionando o workspace certo.' };
+      var saved = lsGet('vst_team');
+      var ok = state.teams.some(function(x){ return String(x.id) === String(state.teamId); });
+      if(!ok) state.teamId = (state.teams.filter(function(x){ return String(x.id) === saved; })[0] || state.teams[0]).id;
+      await loadSpaces();
+    }catch(e){
+      if(e.code === 'auth'){ clickUpLogout(e.message); state.hierLoading = false; render(); return; }
+      state.hierError = e.message || 'Não consegui carregar o ClickUp.';
+    }
+    state.hierLoading = false; render();
+  }
+  async function loadSpaces(){
+    var s = await cu('team/' + state.teamId + '/space?archived=false');
+    state.spaces = (s && s.spaces) || [];
+    var saved = lsGet('vst_space');
+    var pick = state.spaces.filter(function(x){ return String(x.id) === saved; })[0] ||
+               state.spaces.filter(function(x){ return /p[oó]s[\s\-_]*obra/i.test(x.name); })[0] ||
+               state.spaces[0];
+    if(!pick) throw { message:'Nenhum espaço encontrado neste workspace.' };
+    state.spaceId = pick.id;
+    await loadFolders();
+  }
+  async function loadFolders(){
+    var f = await cu('space/' + state.spaceId + '/folder?archived=false');
+    var folders = (f && f.folders) || [];
+    var out = [];
+    for(var i = 0; i < folders.length; i++){
+      var fo = folders[i], lists = fo.lists;
+      if(!Array.isArray(lists)){
+        try{ var l = await cu('folder/' + fo.id + '/list?archived=false'); lists = (l && l.lists) || []; }catch(e){ lists = []; }
+      }
+      out.push({ id:String(fo.id), name:fo.name, lists: lists.map(function(x){ return { id:String(x.id), name:x.name }; }).sort(function(a,b){ return a.name.localeCompare(b.name, 'pt-BR', { numeric:true }); }) });
+    }
+    out.sort(function(a,b){ return a.name.localeCompare(b.name, 'pt-BR', { numeric:true }); });
+    state.folders = out;
+    state.novo.folderId = ''; state.novo.listId = '';
+    if(!out.length) throw { message:'Não encontrei pastas nesse espaço do ClickUp.' };
+  }
+
+  async function sendAll(){
+    var v = cur(); if(!v) return;
+    var list = (v.defeitos || []).filter(function(d){ return !isComplete(d); });
+    if(!list.length){ toast('Nada pendente para enviar.'); return; }
+    var okCount = 0, failCount = 0, stop = false, warn = '';
+    for(var i = 0; i < list.length && !stop; i++){
+      var d = list[i];
+      busy('Enviando ponto ' + d.n + ' (' + (i+1) + ' de ' + list.length + ')...');
+      d.erro = null;
+      try{
+        if(!d.task_id){
+          var prioTxt = d.prioridade || 'Média';
+          var desc = '**Vistoria de entrega**\n' +
+            '**Local:** ' + v.titulo + '\n' +
+            '**Ambiente:** ' + (d.ambiente || 'Não informado') + '\n' +
+            '**Ponto:** ' + d.n + ' na planta (planta marcada anexada)\n' +
+            '**Prioridade:** ' + prioTxt + '\n\n' +
+            '**Descrição:**\n' + d.descricao;
+          var res = await cu('list/' + v.list_id + '/task', { method:'POST', json:{
+            name: 'Ponto ' + d.n + ' - ' + (d.ambiente || 'Sem ambiente') + ': ' + shorten(d.descricao, 70),
+            markdown_description: desc,
+            priority: PRIO_NUM[prioTxt] || 3
+          }});
+          if(!res || !res.id) throw { code:'http', message:'O ClickUp não devolveu o ID da task.' };
+          d.task_id = res.id; d.task_url = res.url || ('https://app.clickup.com/t/' + res.id);
+          await updateDefeito(d.id, { task_id:d.task_id, task_url:d.task_url });
+        }
+      }catch(e){
+        failCount++; d.erro = e.message || 'Falha ao criar a task.';
+        if(ambiguous(e)) warn = 'Uma task pode ter sido criada mesmo com o erro. Confira no ClickUp antes de tentar de novo.';
+        if(e.code === 'auth'){ busy(null); try{ await updateDefeito(d.id, { erro:d.erro }); }catch(x){} clickUpLogout(e.message); return; }
+        if(stopErr(e)) stop = true;
+        try{ await updateDefeito(d.id, { erro:d.erro }); }catch(x){}
+        continue;
+      }
+      try{
+        if(d.foto_path && !d.foto_ok){
+          var fr = await fetch(d._fotoUrl); var fb = await fr.blob();
+          var fd1 = new FormData(); fd1.append('attachment', fb, 'ponto-' + d.n + '-foto.jpg');
+          await cu('task/' + d.task_id + '/attachment', { method:'POST', form: fd1 });
+          d.foto_ok = true; await updateDefeito(d.id, { foto_ok:true });
+        }
+        if(!d.planta_ok){
+          var pb = await makePlantaAnotada(v, d);
+          var fd2 = new FormData(); fd2.append('attachment', pb, 'ponto-' + d.n + '-planta.jpg');
+          await cu('task/' + d.task_id + '/attachment', { method:'POST', form: fd2 });
+          d.planta_ok = true; await updateDefeito(d.id, { planta_ok:true });
+        }
+        okCount++;
+      }catch(e){
+        failCount++; d.erro = 'Task criada, mas o anexo falhou: ' + (e.message || 'erro');
+        if(ambiguous(e)) warn = 'Um anexo pode ter subido mesmo com o erro. Confira a task antes de reenviar.';
+        if(e.code === 'auth'){ busy(null); try{ await updateDefeito(d.id, { erro:d.erro }); }catch(x){} clickUpLogout(e.message); return; }
+        if(stopErr(e)) stop = true;
+        try{ await updateDefeito(d.id, { erro:d.erro }); }catch(x){}
+      }
+    }
+    v.status = computeStatus(v.defeitos);
+    try{ await updateVistoria(v.id, { status: v.status }); }catch(e){}
+    busy(null);
+    if(failCount === 0) toast(okCount + (okCount === 1 ? ' ponto enviado ao ClickUp.' : ' pontos enviados ao ClickUp.'));
+    else toast(okCount + ' enviados, ' + failCount + ' com problema. ' + warn, true);
+    render();
+  }
+
+  function isComplete(d){ return !!d.task_id && (!d.foto_path || d.foto_ok) && !!d.planta_ok; }
+  function computeStatus(defeitos){ return defeitos.length && defeitos.every(isComplete) ? 'finalizada' : 'aberta'; }
+
+  async function createVistoria(){
+    var n = state.novo;
+    var folder = (state.folders || []).filter(function(f){ return f.id === n.folderId; })[0];
+    var list = folder && folder.lists.filter(function(l){ return l.id === n.listId; })[0];
+    if(!folder || !list){ toast('Escolha o prédio e a unidade.', true); return; }
+    if(!n.file){ toast('Envie a planta da unidade.', true); return; }
+    try{
+      busy('Preparando a planta...');
+      var blob;
+      if(/pdf$/i.test(n.file.type) || /\.pdf$/i.test(n.file.name)){
+        try{ blob = await pdfToJpeg(n.file); }
+        catch(e){ busy(null); toast('Não consegui abrir esse PDF. Exporte a planta como imagem (PNG ou JPG) e envie de novo.', true); return; }
+      } else {
+        blob = await compressImage(n.file, 2000, 8 * 1024 * 1024);
+      }
+      busy('Enviando a planta...');
+      var path = await uploadFile(blob, 'plantas');
+      var row = await insertVistoria({
+        titulo: folder.name + ' / ' + list.name, predio: folder.name, unidade: list.name, list_id: list.id,
+        planta_path: path, status:'aberta', created_by: state.session.user.email
+      });
+      row.defeitos = [];
+      await resolveAllUrls([row]);
+      state.vistorias.unshift(row);
+      state.currentId = row.id; state.view = 'vistoria'; state.zoom = 1; state.novo = { folderId:'', listId:'', file:null };
+      busy(null); render();
+    }catch(e){ busy(null); toast('Não consegui criar a vistoria: ' + shorten((e && e.message) || 'erro', 140), true); }
+  }
+
+  function openSheetNew(x, y){ state.sheet = { mode:'novo', x:x, y:y, draft:null }; render(); }
+  function openSheetDef(id){
+    var v = cur(); var d = v && v.defeitos.filter(function(q){ return q.id === id; })[0]; if(!d) return;
+    state.sheet = { mode: d.task_id ? 'ver' : 'editar', defId:id, x:d.x, y:d.y, draft:null, confirmDel:false }; render();
+  }
+  async function saveSheet(){
+    var v = cur(), s = state.sheet; if(!v || !s) return;
+    var amb = $('sAmb').value.trim(), desc = $('sDesc').value.trim(), prio = $('sPrio').value;
+    if(!desc){ toast('Descreva o defeito.', true); $('sDesc').focus(); return; }
+    var btn = $('sSave'); btn.disabled = true;
+    try{
+      var existing = s.defId ? v.defeitos.filter(function(q){ return q.id === s.defId; })[0] : null;
+      var fotoPath = existing ? existing.foto_path : null, fotoOk = existing ? existing.foto_ok : false;
+      if(s.draft && s.draft.blob){
+        busy('Guardando a foto...');
+        fotoPath = await uploadFile(s.draft.blob, 'fotos'); fotoOk = false;
+      }
+      if(existing){
+        var patch = { ambiente:amb, descricao:desc, prioridade:prio, foto_path:fotoPath, foto_ok:fotoOk };
+        await updateDefeito(existing.id, patch);
+        Object.assign(existing, patch);
+        if(fotoPath) existing._fotoUrl = await resolveUrl(fotoPath);
+      } else {
+        var n = v.defeitos.reduce(function(m, q){ return Math.max(m, q.n); }, 0) + 1;
+        var row = await insertDefeito({
+          vistoria_id: v.id, n:n, x:s.x, y:s.y, ambiente:amb, descricao:desc, prioridade:prio,
+          foto_path: fotoPath, foto_ok:false, planta_ok:false, created_by: state.session.user.email
+        });
+        if(fotoPath) row._fotoUrl = await resolveUrl(fotoPath);
+        v.defeitos.push(row);
+      }
+      var st = computeStatus(v.defeitos);
+      if(st !== v.status){ v.status = st; await updateVistoria(v.id, { status: st }); }
+      busy(null); state.sheet = null; render();
+      toast(existing ? 'Ponto atualizado.' : 'Ponto marcado.');
+    }catch(e){ busy(null); btn.disabled = false; toast('Não foi possível salvar: ' + shorten((e && e.message) || 'erro', 140), true); }
+  }
+  async function deleteDef(){
+    var v = cur(), s = state.sheet; if(!v || !s || !s.defId) return;
+    try{
+      await deleteDefeitoRow(s.defId);
+      v.defeitos = v.defeitos.filter(function(q){ return q.id !== s.defId; });
+      var st = computeStatus(v.defeitos);
+      if(st !== v.status){ v.status = st; await updateVistoria(v.id, { status: st }); }
+      state.sheet = null; render(); toast('Ponto excluído.');
+    }catch(e){ toast('Não foi possível excluir: ' + shorten((e && e.message) || 'erro', 120), true); }
+  }
+  async function deleteVistoria(){
+    var v = cur(); if(!v) return;
+    try{
+      await deleteVistoriaRow(v.id);
+      state.vistorias = state.vistorias.filter(function(x){ return x.id !== v.id; });
+      state.currentId = null; state.view = 'home'; state.confirmDelV = false; render();
+      toast('Vistoria excluída para todo mundo.');
+    }catch(e){ toast('Não foi possível excluir: ' + shorten((e && e.message) || 'erro', 120), true); }
+  }
+
+  async function sendMagicLink(){
+    var email = $('authEmail').value.trim();
+    if(!email){ toast('Informe seu e-mail.', true); return; }
+    state.authBusy = true; state.authError = ''; render();
+    try{
+      var r = await supabase.auth.signInWithOtp({ email: email, options: { emailRedirectTo: location.origin + location.pathname, shouldCreateUser: false } });
+      if(r.error) throw r.error;
+      state.authSent = true;
+    }catch(e){
+      state.authError = /not.*allow|disabled|signup/i.test((e && e.message) || '')
+        ? 'Esse e-mail ainda não tem acesso liberado. Peça para quem administra o painel te adicionar no Supabase.'
+        : ('Não consegui enviar o link: ' + ((e && e.message) || 'erro'));
+    }
+    state.authBusy = false; render();
+  }
+  function supabaseLogout(){
+    stopRealtime();
+    supabase.auth.signOut().catch(function(){});
+    state.session = null; state.vistorias = []; state.dataReady = false; state.view = 'home'; state.currentId = null;
+    render();
+  }
+
+  function userBar(){
+    if(!state.session) return '';
+    var email = state.session.user && state.session.user.email || '';
+    var cuPart = state.token
+      ? '<span>ClickUp conectado <button class="link" data-act="sair-clickup">Desconectar</button></span>'
+      : '<span>ClickUp não conectado <button class="link" data-act="conectar-clickup">Conectar</button></span>';
+    return '<div class="userbar no-print"><span>' + esc(email) + ' <button class="link" data-act="sair-supa">Sair</button></span>' + cuPart + '</div>';
+  }
+
+  function viewSupaLogin(){
+    var h = '<div class="top"><div><h1>Vistoria de entrega</h1><div class="sub">Marque os defeitos na planta e envie ao ClickUp</div></div></div>';
+    if(!SUPA_OK) h += '<div class="notice err">Falta configurar SUPABASE_URL e SUPABASE_ANON_KEY no início do arquivo index.html. Veja o LEIA-ME.</div>';
+    if(state.authError) h += '<div class="notice err">' + esc(state.authError) + '</div>';
+    if(state.authSent){
+      h += '<div class="notice ok">Link enviado. Confira seu e-mail e toque nele para entrar.</div>';
+    } else {
+      h += '<div class="empty"><p>Entre com o e-mail cadastrado para acessar as vistorias.</p>' +
+        '<label class="lbl" for="authEmail">E-mail</label><input id="authEmail" type="email" placeholder="voce@exemplo.com" style="max-width:320px;margin:0 auto 14px">' +
+        '<div><button class="btn" data-act="enviar-link"' + (SUPA_OK && !state.authBusy ? '' : ' disabled') + '>' + (state.authBusy ? 'Enviando...' : 'Enviar link de acesso') + '</button></div></div>';
+    }
+    return h;
+  }
+
+  function viewHome(){
+    var h = userBar() + '<div class="top"><div><h1>Vistoria de entrega</h1><div class="sub">Marque os defeitos na planta e envie ao ClickUp</div></div>' +
+      '<button class="btn" data-act="novo">Nova vistoria</button></div>';
+    if(state.dataError) h += '<div class="notice err">' + esc(state.dataError) + '</div>';
+    if(!state.dataReady){ h += '<div class="empty"><p>Carregando...</p></div>'; return h; }
+    if(!state.vistorias.length){
+      h += '<div class="empty"><p>Nenhuma vistoria ainda. Crie a primeira escolhendo a unidade e enviando a planta.</p></div>';
+      return h;
+    }
+    h += '<div class="cards">' + state.vistorias.map(function(v){
+      var ds = v.defeitos || [], done = ds.filter(isComplete).length;
+      var chip = v.status === 'finalizada' ? '<span class="chip green">Enviada</span>' : (ds.length ? '<span class="chip amber">Em andamento</span>' : '<span class="chip">Nova</span>');
+      return '<div class="card ' + (v.status === 'finalizada' ? 'done' : '') + '" data-act="abrir" data-id="' + esc(v.id) + '">' +
+        '<div><div class="t">' + esc(v.titulo) + '</div><div class="m">' + ds.length + (ds.length === 1 ? ' defeito' : ' defeitos') + ', ' + done + ' no ClickUp, criada em ' + fmtDate(v.created_at) + '</div></div>' + chip + '</div>';
+    }).join('') + '</div>';
+    return h;
+  }
+
+  function viewNovo(){
+    var n = state.novo;
+    var h = userBar() + '<button class="link back" data-act="home">Voltar</button>' +
+      '<div class="top"><div><h1>Nova vistoria</h1><div class="sub">Escolha a unidade e envie a planta</div></div></div>';
+    if(!state.token){
+      h += '<div class="empty"><p>Para criar uma vistoria, conecte sua conta do ClickUp — é de lá que vêm os prédios e as unidades.</p><button class="btn" data-act="conectar-clickup">Conectar ClickUp</button></div>';
+      return h;
+    }
+    if(state.hierLoading) h += '<div class="empty"><p>Buscando as unidades no ClickUp...</p></div>';
+    else if(state.hierError) h += '<div class="notice err">' + esc(state.hierError) + '</div><button class="btn secondary" data-act="reload-h">Tentar de novo</button>';
+    else if(state.folders){
+      var folder = state.folders.filter(function(f){ return f.id === n.folderId; })[0];
+      if(state.teams.length > 1){
+        h += '<label class="lbl">Workspace</label><select id="nTeam">' + state.teams.map(function(t){ return '<option value="' + esc(t.id) + '"' + (String(t.id) === String(state.teamId) ? ' selected' : '') + '>' + esc(t.name) + '</option>'; }).join('') + '</select>';
+      }
+      if(state.spaces.length > 1){
+        h += '<label class="lbl">Espaço</label><select id="nSpace">' + state.spaces.map(function(s){ return '<option value="' + esc(s.id) + '"' + (String(s.id) === String(state.spaceId) ? ' selected' : '') + '>' + esc(s.name) + '</option>'; }).join('') + '</select>';
+      }
+      h += '<label class="lbl">Prédio (pasta no ClickUp)</label><select id="nFolder"><option value="">Selecione</option>' +
+        state.folders.map(function(f){ return '<option value="' + esc(f.id) + '"' + (f.id === n.folderId ? ' selected' : '') + '>' + esc(f.name) + '</option>'; }).join('') + '</select>';
+      h += '<label class="lbl">Unidade (lista no ClickUp)</label><select id="nList"' + (folder ? '' : ' disabled') + '><option value="">Selecione</option>' +
+        (folder ? folder.lists.map(function(l){ return '<option value="' + esc(l.id) + '"' + (l.id === n.listId ? ' selected' : '') + '>' + esc(l.name) + '</option>'; }).join('') : '') + '</select>';
+      h += '<label class="lbl">Planta da unidade (PDF ou imagem)</label><input type="file" id="nFile" accept="application/pdf,image/*">' +
+        (n.file ? '<div class="sub" style="margin-top:6px">Arquivo: ' + esc(n.file.name) + '</div>' : '') +
+        '<div class="sub" style="margin-top:6px">Em PDF com várias páginas, uso a primeira.</div>';
+      h += '<div style="margin-top:20px"><button class="btn" data-act="criar">Criar vistoria</button></div>';
+    }
+    return h;
+  }
+
+  function pinsHtml(v){
+    return (v.defeitos || []).map(function(d){
+      return '<button class="pin p-' + esc(d.prioridade) + (d.task_id ? ' sent' : '') + '" data-act="pin" data-id="' + esc(d.id) + '" style="left:' + (d.x*100) + '%;top:' + (d.y*100) + '%" aria-label="Ponto ' + d.n + '">' + d.n + '</button>';
+    }).join('') + (state.sheet && state.sheet.mode === 'novo' ? '<span class="pin pending" style="left:' + (state.sheet.x*100) + '%;top:' + (state.sheet.y*100) + '%">+</span>' : '');
+  }
+
+  function viewVistoria(){
+    var v = cur(); if(!v) return userBar() + '<button class="link back" data-act="home">Voltar</button><div class="empty"><p>Vistoria não encontrada.</p></div>';
+    var ds = (v.defeitos || []).slice().sort(function(a,b){ return a.n - b.n; });
+    var pend = ds.filter(function(d){ return !isComplete(d); }).length;
+    var h = userBar() + '<button class="link back" data-act="home">Voltar</button>' +
+      '<div class="top"><div><h1>' + esc(v.titulo) + '</h1><div class="sub">' + ds.length + (ds.length === 1 ? ' defeito marcado' : ' defeitos marcados') + ', criada em ' + fmtDate(v.created_at) + '</div></div>' +
+      '<button class="btn secondary small" data-act="relatorio">Relatório para o cliente</button></div>';
+    h += '<div class="toolbar"><span class="hint">Toque na planta para marcar um defeito. Toque num número para abrir.</span>' +
+      '<button class="btn secondary zoombtn" data-act="zoom-" aria-label="Diminuir">−</button>' +
+      '<button class="btn secondary zoombtn" data-act="zoom+" aria-label="Aumentar">+</button></div>';
+    h += '<div id="planScroll"><div id="planWrap" style="width:' + (state.zoom*100) + '%"><img id="planImg" src="' + esc(v._plantaUrl || '') + '" alt="Planta" draggable="false">' + pinsHtml(v) + '</div></div>';
+    h += '<h2 class="sec">Defeitos</h2>';
+    if(!ds.length) h += '<div class="empty"><p>Nenhum defeito marcado ainda.</p></div>';
+    h += ds.map(function(d){
+      var st = d.task_id ? (isComplete(d) ? '<span class="chip green">No ClickUp</span>' : '<span class="chip amber">Anexo pendente</span>') : '<span class="chip">Não enviado</span>';
+      return '<div class="def"><div class="n p-' + esc(d.prioridade) + '">' + d.n + '</div>' +
+        '<div class="body" data-act="pin" data-id="' + esc(d.id) + '"><div class="amb">' + esc(d.ambiente || 'Sem ambiente') + '</div><div class="desc">' + esc(shorten(d.descricao, 160)) + '</div>' +
+        '<div class="row">' + st + '<span class="chip ' + (d.prioridade === 'Alta' ? 'orange' : '') + '">' + esc(d.prioridade) + '</span>' +
+        (d.task_url ? '<a class="link" href="' + esc(d.task_url) + '" target="_blank" rel="noopener">Abrir no ClickUp</a>' : '') + '</div>' +
+        (d.erro ? '<div class="sub" style="color:var(--orange);margin-top:4px">' + esc(d.erro) + '</div>' : '') + '</div>' +
+        (d.foto_path ? '<img class="th" src="' + esc(d._fotoUrl || '') + '" alt="Foto do ponto ' + d.n + '" data-act="pin" data-id="' + esc(d.id) + '">' : '') + '</div>';
+    }).join('');
+    h += '<div class="zone no-print">' + (state.confirmDelV
+      ? 'Excluir esta vistoria para todo mundo, inclusive o que já foi enviado ao ClickUp continua lá. <button class="link danger" data-act="excluir-v-ok">Confirmar exclusão</button> <button class="link" data-act="excluir-v-cancel">Cancelar</button>'
+      : '<button class="link danger" data-act="excluir-v">Excluir esta vistoria</button>') + '</div>';
+    h += '<div class="actions no-print">' + (state.token
+      ? '<button class="btn blue" data-act="enviar"' + (pend ? '' : ' disabled') + '>' + (pend ? 'Enviar ' + pend + (pend === 1 ? ' ponto ao ClickUp' : ' pontos ao ClickUp') : 'Tudo enviado ao ClickUp') + '</button>'
+      : '<button class="btn blue" data-act="conectar-clickup">Conectar ClickUp para enviar</button>') + '</div>';
+    return h;
+  }
+
+  function viewRelatorio(){
+    var v = cur(); if(!v) return '';
+    var ds = (v.defeitos || []).slice().sort(function(a,b){ return a.n - b.n; });
+    var h = '<div class="no-print" style="display:flex;justify-content:space-between;gap:10px;margin-bottom:14px"><button class="link" data-act="voltar-v">Voltar</button><button class="btn small" data-act="imprimir">Imprimir ou salvar em PDF</button></div>';
+    h += '<div class="report"><h1>Vistoria de entrega</h1><div class="meta">' + esc(v.titulo) + ', ' + fmtDate(v.created_at) + '. ' + ds.length + (ds.length === 1 ? ' ponto registrado.' : ' pontos registrados.') + '</div>';
+    h += '<div class="planbox"><img src="' + esc(v._plantaUrl || '') + '" alt="Planta">' + ds.map(function(d){
+      return '<span class="pin p-' + esc(d.prioridade) + '" style="left:' + (d.x*100) + '%;top:' + (d.y*100) + '%">' + d.n + '</span>';
+    }).join('') + '</div>';
+    h += ds.map(function(d){
+      return '<div class="rdef">' + (d.foto_path ? '<img src="' + esc(d._fotoUrl || '') + '" alt="Foto do ponto ' + d.n + '">' : '') +
+        '<div><div><strong>Ponto ' + d.n + '</strong>, ' + esc(d.ambiente || 'Sem ambiente') + ' (prioridade ' + esc(d.prioridade.toLowerCase()) + ')</div><div style="white-space:pre-wrap">' + esc(d.descricao) + '</div></div></div>';
+    }).join('');
+    h += '<div class="sign"><div>Cliente</div><div>Responsável pela entrega</div></div></div>';
+    return h;
+  }
+
+  function sheetHtml(){
+    var s = state.sheet; if(!s) return '';
+    var v = cur(), d = s.defId ? v.defeitos.filter(function(q){ return q.id === s.defId; })[0] : null;
+    var ro = s.mode === 'ver';
+    var title = s.mode === 'novo' ? 'Novo defeito' : (ro ? 'Ponto ' + d.n : 'Editar ponto ' + d.n);
+    var fotoSrc = s.draft ? s.draft.url : (d && d._fotoUrl ? d._fotoUrl : '');
+    var h = '<div class="sheet" role="dialog" aria-label="' + esc(title) + '"><h2>' + esc(title) + '</h2>';
+    if(ro) h += '<div class="sub">Este ponto já está no ClickUp e não pode mais ser alterado por aqui.</div>';
+    h += '<label class="lbl" for="sAmb">Ambiente</label><input id="sAmb" list="ambList" value="' + esc(d ? d.ambiente : '') + '"' + (ro ? ' disabled' : '') + ' placeholder="Ex: Banheiro da suíte">' +
+      '<datalist id="ambList">' + AMBIENTES.map(function(a){ return '<option value="' + esc(a) + '">'; }).join('') + '</datalist>';
+    h += '<label class="lbl" for="sDesc">Descrição do defeito</label><textarea id="sDesc"' + (ro ? ' disabled' : '') + ' placeholder="O que está errado e onde">' + esc(d ? d.descricao : '') + '</textarea>';
+    h += '<label class="lbl" for="sPrio">Prioridade</label><select id="sPrio"' + (ro ? ' disabled' : '') + '>' + ['Alta','Média','Baixa'].map(function(p){
+      var sel = d ? d.prioridade === p : p === 'Média'; return '<option' + (sel ? ' selected' : '') + '>' + p + '</option>'; }).join('') + '</select>';
+    h += '<label class="lbl">Foto</label><div class="foto"><img id="fotoPrev" alt="Foto do defeito"' + (fotoSrc ? ' src="' + esc(fotoSrc) + '"' : ' hidden') + '>' +
+      (ro ? '' : '<input type="file" id="sFoto" accept="image/*"><div class="sub" style="margin-top:5px">No celular, abre a câmera ou a galeria.</div>') + '</div>';
+    h += '<div class="btns">';
+    if(s.mode === 'editar') h += s.confirmDel ? '<button class="link danger" data-act="del-ok">Confirmar exclusão</button>' : '<button class="link danger" data-act="del">Excluir ponto</button>';
+    h += '<span class="spacer"></span><button class="btn secondary" data-act="fechar">' + (ro ? 'Fechar' : 'Cancelar') + '</button>' +
+      (ro ? '' : '<button class="btn" id="sSave" data-act="salvar">Salvar</button>') + '</div></div>';
+    return h;
+  }
+
+  function render(){
+    var root = $('root'), ov = $('overlay');
+    var ps = $('planScroll'), sl = ps ? ps.scrollLeft : 0, st = ps ? ps.scrollTop : 0;
+    var h;
+    if(!state.authChecked) h = '<div class="empty"><p>Carregando...</p></div>';
+    else if(!state.session) h = viewSupaLogin();
+    else if(state.view === 'novo') h = viewNovo();
+    else if(state.view === 'vistoria') h = viewVistoria();
+    else if(state.view === 'relatorio') h = viewRelatorio();
+    else h = viewHome();
+    root.innerHTML = h;
+    if(state.session && state.view === 'vistoria'){ var p2 = $('planScroll'); if(p2){ p2.scrollLeft = sl; p2.scrollTop = st; } }
+    if(state.session && state.sheet && state.view === 'vistoria'){ ov.innerHTML = sheetHtml(); ov.hidden = false; }
+    else { ov.innerHTML = ''; ov.hidden = true; }
+    wireForms();
+  }
+
+  function wireForms(){
+    var ae = $('authEmail');
+    if(ae) ae.addEventListener('keydown', function(e){ if(e.key === 'Enter') sendMagicLink(); });
+    var t = $('nTeam');
+    if(t) t.addEventListener('change', async function(){
+      state.teamId = t.value; lsSet('vst_team', t.value); state.hierLoading = true; render();
+      try{ await loadSpaces(); state.hierError = null; }catch(e){ if(e.code === 'auth'){ clickUpLogout(e.message); state.hierLoading=false; render(); return; } state.hierError = e.message || 'Falha ao carregar.'; }
+      state.hierLoading = false; render();
+    });
+    var sp = $('nSpace');
+    if(sp) sp.addEventListener('change', async function(){
+      state.spaceId = sp.value; lsSet('vst_space', sp.value); state.hierLoading = true; render();
+      try{ await loadFolders(); state.hierError = null; }catch(e){ if(e.code === 'auth'){ clickUpLogout(e.message); state.hierLoading=false; render(); return; } state.hierError = e.message || 'Falha ao carregar.'; }
+      state.hierLoading = false; render();
+    });
+    var f = $('nFolder');
+    if(f) f.addEventListener('change', function(){ state.novo.folderId = f.value; state.novo.listId = ''; render(); });
+    var l = $('nList');
+    if(l) l.addEventListener('change', function(){ state.novo.listId = l.value; });
+    var nf = $('nFile');
+    if(nf) nf.addEventListener('change', function(){ state.novo.file = nf.files && nf.files[0] || null; render(); });
+    var sf = $('sFoto');
+    if(sf) sf.addEventListener('change', async function(){
+      var file = sf.files && sf.files[0]; if(!file || !state.sheet) return;
+      try{
+        busy('Preparando a foto...');
+        var blob = await compressImage(file, 1600, 700 * 1024);
+        state.sheet.draft = { blob: blob, url: URL.createObjectURL(blob) };
+        var prev = $('fotoPrev'); if(prev){ prev.src = state.sheet.draft.url; prev.hidden = false; }
+        busy(null);
+      }catch(e){ busy(null); toast('Não consegui usar essa foto.', true); }
+    });
+  }
+
+  document.addEventListener('click', function(e){
+    var t = e.target.closest('[data-act]'); if(!t) return;
+    var a = t.dataset.act;
+    if(a === 'enviar-link'){ sendMagicLink(); }
+    else if(a === 'sair-supa'){ supabaseLogout(); }
+    else if(a === 'conectar-clickup'){ location.href = API_BASE + '/auth/start'; }
+    else if(a === 'sair-clickup'){ clickUpLogout(''); }
+    else if(a === 'novo'){ state.view = 'novo'; state.novo = { folderId:'', listId:'', file:null }; if(state.token && !state.folders && !state.hierLoading) loadHierarchy(); else render(); }
+    else if(a === 'reload-h'){ loadHierarchy(); }
+    else if(a === 'home'){ state.view = 'home'; state.currentId = null; state.confirmDelV = false; render(); loadAll(); }
+    else if(a === 'voltar-v'){ state.view = 'vistoria'; render(); }
+    else if(a === 'abrir'){ state.currentId = t.dataset.id; state.view = 'vistoria'; state.zoom = 1; state.confirmDelV = false; render(); }
+    else if(a === 'criar'){ createVistoria(); }
+    else if(a === 'zoom+'){ state.zoom = Math.min(4, state.zoom + 0.5); render(); }
+    else if(a === 'zoom-'){ state.zoom = Math.max(1, state.zoom - 0.5); render(); }
+    else if(a === 'pin'){ e.stopPropagation(); openSheetDef(t.dataset.id); }
+    else if(a === 'fechar'){ state.sheet = null; render(); }
+    else if(a === 'salvar'){ saveSheet(); }
+    else if(a === 'del'){ state.sheet.confirmDel = true; render(); }
+    else if(a === 'del-ok'){ deleteDef(); }
+    else if(a === 'enviar'){ sendAll(); }
+    else if(a === 'relatorio'){ state.view = 'relatorio'; render(); }
+    else if(a === 'imprimir'){ try{ window.print(); }catch(err){ toast('Não consegui abrir a impressão aqui. Use o menu do navegador para imprimir.', true); } }
+    else if(a === 'excluir-v'){ state.confirmDelV = true; render(); }
+    else if(a === 'excluir-v-cancel'){ state.confirmDelV = false; render(); }
+    else if(a === 'excluir-v-ok'){ deleteVistoria(); }
+  });
+  $('overlay').addEventListener('click', function(e){ if(e.target.id === 'overlay'){ state.sheet = null; render(); } });
+
+  var down = null;
+  document.addEventListener('pointerdown', function(e){
+    if(e.target.closest('.pin')){ down = null; return; }
+    if(!e.target.closest('#planWrap')){ down = null; return; }
+    down = { x:e.clientX, y:e.clientY, t:Date.now() };
+  });
+  document.addEventListener('pointercancel', function(){ down = null; });
+  document.addEventListener('pointerup', function(e){
+    if(!down) return; var d0 = down; down = null;
+    if(state.view !== 'vistoria' || state.sheet) return;
+    if(Math.hypot(e.clientX - d0.x, e.clientY - d0.y) > 8 || Date.now() - d0.t > 600) return;
+    var img = $('planImg'); if(!img) return;
+    var r = img.getBoundingClientRect();
+    var x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+    if(x < 0 || x > 1 || y < 0 || y > 1) return;
+    openSheetNew(x, y);
+  });
+
+  readClickUpHash();
+  state.token = lsGet('vst_token');
+  render();
+
+  if(!SUPA_OK){ state.authChecked = true; render(); }
+  else{
+    supabase.auth.onAuthStateChange(function(event, session){
+      var had = !!state.session;
+      state.session = session;
+      state.authChecked = true;
+      if(session && !had){
+        state.authSent = false; state.authError = '';
+        startRealtime();
+        loadAll();
+      } else if(!session && had){
+        stopRealtime();
+      }
+      render();
+    });
+    supabase.auth.getSession().then(function(r){
+      state.session = r.data.session; state.authChecked = true;
+      if(state.session){ startRealtime(); loadAll(); }
+      render();
+    });
+  }
+  if(state.token) fetchClickUpUser();
+})();
+</script>
+</body>
+</html>
