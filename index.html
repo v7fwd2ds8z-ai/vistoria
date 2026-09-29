@@ -746,7 +746,7 @@
         (d.foto_path ? '<img class="th" src="' + esc(d._fotoUrl || '') + '" alt="Foto do ponto ' + d.n + '" data-act="pin" data-id="' + esc(d.id) + '">' : '') + '</div>';
     }).join('');
     h += '<div class="zone no-print">' + (state.confirmDelV
-      ? 'Excluir esta vistoria para todo mundo, inclusive o que já foi enviado ao ClickUp continua lá. <button class="link danger" data-act="excluir-v-ok">Confirmar exclusão</button> <button class="link" data-act="excluir-v-cancel">Cancelar</button>'
+      ? 'Excluir esta vistoria para todo mundo? Os pontos já enviados ao ClickUp continuam lá. <button class="link danger" data-act="excluir-v-ok">Confirmar exclusão</button> <button class="link" data-act="excluir-v-cancel">Cancelar</button>'
       : '<button class="link danger" data-act="excluir-v">Excluir esta vistoria</button>') + '</div>';
     h += '<div class="actions no-print">' + (state.token
       ? '<button class="btn blue" data-act="enviar"' + (pend ? '' : ' disabled') + '>' + (pend ? 'Enviar ' + pend + (pend === 1 ? ' ponto ao ClickUp' : ' pontos ao ClickUp') : 'Tudo enviado ao ClickUp') + '</button>'
