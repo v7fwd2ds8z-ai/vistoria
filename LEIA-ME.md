@@ -23,7 +23,19 @@ Use apenas a chave `anon` aqui — nunca a `service_role`, pois este arquivo é 
 
 ## Dar acesso a alguém
 
-Adicione o e-mail da pessoa em **Authentication → Users** no painel do Supabase. Sem isso, o login mostra "Esse e-mail ainda não tem acesso liberado".
+Qualquer pessoa pode pedir acesso pela tela de login: ela informa e-mail e nome, entra pelo link e fica numa tela de "aguardando aprovação". Quem é admin vê um contador de pedidos no topo do app e aprova ou recusa em **Acessos**. A tela da pessoa atualiza sozinha quando o pedido é aprovado.
+
+As regras do banco garantem que só usuários aprovados leem ou alteram vistorias, defeitos e arquivos. Quem já tinha conta quando o recurso foi ativado continua aprovado.
+
+### Ativar (uma vez)
+
+A ordem importa: se o cadastro for aberto antes das regras novas, qualquer pessoa que criar conta vê os dados.
+
+1. No **SQL Editor** do Supabase, rode [`supabase/aprovacao-de-acesso.sql`](supabase/aprovacao-de-acesso.sql), trocando `SEU-EMAIL@exemplo.com` no fim pelo e-mail de quem vai administrar.
+2. Publique esta versão do `index.html`.
+3. Em **Authentication → Sign In / Providers**, ative **Allow new users to sign up**.
+
+Para tornar outra pessoa admin, rode `update public.usuarios set admin = true where email = '...';`.
 
 ## Rodar localmente
 
