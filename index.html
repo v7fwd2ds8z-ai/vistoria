@@ -81,6 +81,10 @@
   .chip.green{ background:var(--green-soft); color:var(--green); }
   .chip.orange{ background:var(--orange-soft); color:var(--orange); }
   .chip.amber{ background:var(--amber-soft); color:var(--amber); }
+  .card.pedido{ cursor:default; flex-wrap:wrap; }
+  .card.pedido:hover{ background:var(--surface); }
+  .card.pedido .t, .card.pedido .m{ overflow-wrap:anywhere; }
+  .card .acoes{ display:flex; gap:6px; flex-shrink:0; }
   .empty{ border:1px dashed var(--line); border-radius:var(--radius); padding:34px 18px; text-align:center; color:var(--ink-soft); }
   .empty p{ margin:0 0 14px; }
   .notice{ background:var(--amber-soft); color:var(--ink); border-left:3px solid var(--amber); padding:10px 12px; border-radius:var(--radius); margin-bottom:14px; font-size:13px; }
@@ -187,6 +191,7 @@
     view:'home', session:null, authChecked:false,
     authEmail:'', authSent:false, authBusy:false, authError:'',
     token:null, user:null, cuError:'',
+    sessionUid:null, perfil:null, perfilChecked:false, perfilError:null, pedidos:[],
     vistorias:[], dataReady:false, dataError:null,
     currentId:null, zoom:1, sheet:null, confirmDelV:false,
     teams:[], teamId:null, spaces:[], spaceId:null, folders:null, hierError:null, hierLoading:false,
@@ -354,6 +359,71 @@
   function stopRealtime(){
     channels.forEach(function(c){ try{ supabase.removeChannel(c); }catch(e){} });
     channels = [];
+  }
+
+  function isAprovado(){ return !!(state.perfil && state.perfil.status === 'aprovado'); }
+  function isAdmin(){ return isAprovado() && !!state.perfil.admin; }
+  function pendentes(){ return state.pedidos.filter(function(u){ return u.status === 'pendente'; }); }
+  async function loadPerfil(){
+    try{
+      var r = await supabase.from('usuarios').select('*').eq('user_id', state.sessionUid).maybeSingle();
+      if(r.error) throw r.error;
+      state.perfil = r.data; state.perfilError = null;
+    }catch(e){
+      state.perfil = null; state.perfilError = 'Não consegui verificar seu acesso: ' + sbErrorText(e);
+    }
+    state.perfilChecked = true;
+  }
+  async function loadPedidos(){
+    if(!isAdmin()){ state.pedidos = []; return; }
+    var r = await supabase.from('usuarios').select('*').neq('status', 'aprovado').order('created_at', { ascending:false });
+    if(!r.error) state.pedidos = r.data || [];
+    render();
+  }
+  async function refreshAcesso(){
+    var had = isAprovado();
+    await loadPerfil();
+    if(isAprovado() && !had){ startRealtime(); loadAll(); }
+    else if(!isAprovado() && had){
+      stopRealtime();
+      state.vistorias = []; state.dataReady = false; state.view = 'home'; state.currentId = null; state.sheet = null;
+    }
+    if(isAdmin()) loadPedidos(); else state.pedidos = [];
+    render();
+  }
+  var acessoChannel = null, acessoTimer = null;
+  function watchAcesso(){
+    if(acessoChannel) return;
+    try{
+      acessoChannel = supabase.channel('usuarios-rt').on('postgres_changes', { event:'*', schema:'public', table:'usuarios' }, function(){
+        clearTimeout(acessoTimer); acessoTimer = setTimeout(refreshAcesso, 400);
+      }).subscribe();
+    }catch(e){}
+  }
+  function unwatchAcesso(){
+    if(acessoChannel){ try{ supabase.removeChannel(acessoChannel); }catch(e){} acessoChannel = null; }
+  }
+  async function startSession(){
+    var uid = state.session.user.id;
+    if(state.sessionUid === uid) return;
+    state.sessionUid = uid; state.perfil = null; state.perfilChecked = false;
+    render();
+    await refreshAcesso();
+    watchAcesso();
+  }
+  function endSession(){
+    stopRealtime(); unwatchAcesso();
+    state.sessionUid = null; state.perfil = null; state.perfilChecked = false; state.perfilError = null; state.pedidos = [];
+    state.vistorias = []; state.dataReady = false; state.view = 'home'; state.currentId = null; state.sheet = null;
+  }
+  async function decidirAcesso(id, status){
+    try{
+      var r = await supabase.from('usuarios').update({ status: status, decidido_em: new Date().toISOString(), decidido_por: state.sessionUid }).eq('user_id', id).select();
+      if(r.error) throw new Error(sbErrorText(r.error));
+      if(!r.data || !r.data.length) throw new Error('sem permissão para alterar este usuário.');
+      state.pedidos = state.pedidos.map(function(u){ return u.user_id === id ? r.data[0] : u; }).filter(function(u){ return u.status !== 'aprovado'; });
+      render(); toast(status === 'aprovado' ? 'Acesso aprovado.' : 'Pedido recusado.');
+    }catch(e){ render(); toast('Não foi possível salvar: ' + shorten((e && e.message) || 'erro', 120), true); }
   }
 
   async function insertVistoria(row){
@@ -626,23 +696,24 @@
 
   async function sendMagicLink(){
     var email = $('authEmail').value.trim();
+    var nome = $('authNome') ? $('authNome').value.trim() : '';
     if(!email){ toast('Informe seu e-mail.', true); return; }
     state.authBusy = true; state.authError = ''; render();
     try{
-      var r = await supabase.auth.signInWithOtp({ email: email, options: { emailRedirectTo: location.origin + location.pathname, shouldCreateUser: false } });
+      var r = await supabase.auth.signInWithOtp({ email: email, options: { emailRedirectTo: location.origin + location.pathname, shouldCreateUser: true, data: nome ? { nome: nome } : undefined } });
       if(r.error) throw r.error;
       state.authSent = true;
     }catch(e){
       state.authError = /not.*allow|disabled|signup/i.test((e && e.message) || '')
-        ? 'Esse e-mail ainda não tem acesso liberado. Peça para quem administra o painel te adicionar no Supabase.'
+        ? 'O cadastro de novos e-mails está desativado. Peça para quem administra o sistema liberar seu acesso.'
         : ('Não consegui enviar o link: ' + ((e && e.message) || 'erro'));
     }
     state.authBusy = false; render();
   }
   function supabaseLogout(){
-    stopRealtime();
+    endSession();
     supabase.auth.signOut().catch(function(){});
-    state.session = null; state.vistorias = []; state.dataReady = false; state.view = 'home'; state.currentId = null;
+    state.session = null;
     render();
   }
 
@@ -652,7 +723,9 @@
     var cuPart = state.token
       ? '<span>ClickUp conectado <button class="link" data-act="sair-clickup">Desconectar</button></span>'
       : '<span>ClickUp não conectado <button class="link" data-act="conectar-clickup">Conectar</button></span>';
-    return '<div class="userbar no-print"><span>' + esc(email) + ' <button class="link" data-act="sair-supa">Sair</button></span>' + cuPart + '</div>';
+    var n = pendentes().length;
+    var adm = isAdmin() ? ' <button class="link" data-act="acessos">Acessos</button>' + (n ? '<span class="chip orange">' + n + '</span>' : '') : '';
+    return '<div class="userbar no-print"><span>' + esc(email) + ' <button class="link" data-act="sair-supa">Sair</button>' + adm + '</span>' + cuPart + '</div>';
   }
 
   function viewSupaLogin(){
@@ -662,8 +735,9 @@
     if(state.authSent){
       h += '<div class="notice ok">Link enviado. Confira seu e-mail e toque nele para entrar.</div>';
     } else {
-      h += '<div class="empty"><p>Entre com o e-mail cadastrado para acessar as vistorias.</p>' +
-        '<label class="lbl" for="authEmail">E-mail</label><input id="authEmail" type="email" placeholder="voce@exemplo.com" style="max-width:320px;margin:0 auto 14px">' +
+      h += '<div class="empty"><p>Entre com seu e-mail. No primeiro acesso, seu pedido vai para aprovação.</p>' +
+        '<label class="lbl" for="authEmail">E-mail</label><input id="authEmail" type="email" autocomplete="email" placeholder="voce@exemplo.com" style="max-width:320px;margin:0 auto">' +
+        '<label class="lbl" for="authNome">Seu nome (só no primeiro acesso)</label><input id="authNome" type="text" autocomplete="name" maxlength="120" style="max-width:320px;margin:0 auto 14px">' +
         '<div><button class="btn" data-act="enviar-link"' + (SUPA_OK && !state.authBusy ? '' : ' disabled') + '>' + (state.authBusy ? 'Enviando...' : 'Enviar link de acesso') + '</button></div></div>';
     }
     return h;
@@ -673,6 +747,8 @@
     var h = userBar() + '<div class="top"><div><h1>Vistoria de entrega</h1><div class="sub">Marque os defeitos na planta e envie ao ClickUp</div></div>' +
       '<button class="btn" data-act="novo">Nova vistoria</button></div>';
     if(state.dataError) h += '<div class="notice err">' + esc(state.dataError) + '</div>';
+    var np = isAdmin() ? pendentes().length : 0;
+    if(np) h += '<div class="notice">' + np + (np === 1 ? ' pedido de acesso aguardando' : ' pedidos de acesso aguardando') + ' aprovação. <button class="link" data-act="acessos">Ver pedidos</button></div>';
     if(!state.dataReady){ h += '<div class="empty"><p>Carregando...</p></div>'; return h; }
     if(!state.vistorias.length){
       h += '<div class="empty"><p>Nenhuma vistoria ainda. Crie a primeira escolhendo a unidade e enviando a planta.</p></div>';
@@ -684,6 +760,31 @@
       return '<div class="card ' + (v.status === 'finalizada' ? 'done' : '') + '" data-act="abrir" data-id="' + esc(v.id) + '">' +
         '<div><div class="t">' + esc(v.titulo) + '</div><div class="m">' + ds.length + (ds.length === 1 ? ' defeito' : ' defeitos') + ', ' + done + ' no ClickUp, criada em ' + fmtDate(v.created_at) + '</div></div>' + chip + '</div>';
     }).join('') + '</div>';
+    return h;
+  }
+
+  function viewAguardando(){
+    var email = state.session.user && state.session.user.email || '';
+    var h = '<div class="userbar no-print"><span>' + esc(email) + ' <button class="link" data-act="sair-supa">Sair</button></span></div>' +
+      '<div class="top"><div><h1>Vistoria de entrega</h1><div class="sub">Marque os defeitos na planta e envie ao ClickUp</div></div></div>';
+    if(state.perfilError) h += '<div class="notice err">' + esc(state.perfilError) + '</div><button class="btn secondary" data-act="checar-acesso">Tentar de novo</button>';
+    else if(state.perfil && state.perfil.status === 'recusado') h += '<div class="notice err">Seu pedido de acesso não foi aprovado. Se for engano, fale com quem administra o sistema.</div>';
+    else h += '<div class="empty"><p>Seu pedido de acesso foi enviado e está aguardando aprovação. Assim que for aprovado, esta tela atualiza sozinha.</p><button class="btn secondary" data-act="checar-acesso">Verificar agora</button></div>';
+    return h;
+  }
+
+  function viewAcessos(){
+    var h = userBar() + '<button class="link back" data-act="home">Voltar</button>' +
+      '<div class="top"><div><h1>Pedidos de acesso</h1><div class="sub">Aprove quem pode usar o sistema</div></div></div>';
+    function item(u, acoes){
+      return '<div class="card pedido"><div><div class="t">' + esc(u.nome || u.email) + '</div><div class="m">' + (u.nome ? esc(u.email) + ', ' : '') + 'pediu em ' + fmtDate(u.created_at) + '</div></div>' +
+        '<div class="acoes">' + acoes + '</div></div>';
+    }
+    function btn(act, label, cls, u){ return '<button class="btn' + cls + '" data-act="' + act + '" data-id="' + esc(u.user_id) + '">' + label + '</button>'; }
+    var pend = pendentes(), rec = state.pedidos.filter(function(u){ return u.status === 'recusado'; });
+    if(!pend.length) h += '<div class="empty"><p>Nenhum pedido aguardando.</p></div>';
+    else h += '<div class="cards">' + pend.map(function(u){ return item(u, btn('aprovar', 'Aprovar', '', u) + btn('recusar', 'Recusar', ' secondary', u)); }).join('') + '</div>';
+    if(rec.length) h += '<h2 class="sec">Recusados</h2><div class="cards">' + rec.map(function(u){ return item(u, btn('aprovar', 'Aprovar', ' secondary', u)); }).join('') + '</div>';
     return h;
   }
 
@@ -798,13 +899,16 @@
     var h;
     if(!state.authChecked) h = '<div class="empty"><p>Carregando...</p></div>';
     else if(!state.session) h = viewSupaLogin();
+    else if(!state.perfilChecked) h = '<div class="empty"><p>Carregando...</p></div>';
+    else if(!isAprovado()) h = viewAguardando();
+    else if(state.view === 'acessos') h = viewAcessos();
     else if(state.view === 'novo') h = viewNovo();
     else if(state.view === 'vistoria') h = viewVistoria();
     else if(state.view === 'relatorio') h = viewRelatorio();
     else h = viewHome();
     root.innerHTML = h;
     if(state.session && state.view === 'vistoria'){ var p2 = $('planScroll'); if(p2){ p2.scrollLeft = sl; p2.scrollTop = st; } }
-    if(state.session && state.sheet && state.view === 'vistoria'){ ov.innerHTML = sheetHtml(); ov.hidden = false; }
+    if(state.session && isAprovado() && state.sheet && state.view === 'vistoria'){ ov.innerHTML = sheetHtml(); ov.hidden = false; }
     else { ov.innerHTML = ''; ov.hidden = true; }
     wireForms();
   }
@@ -812,6 +916,8 @@
   function wireForms(){
     var ae = $('authEmail');
     if(ae) ae.addEventListener('keydown', function(e){ if(e.key === 'Enter') sendMagicLink(); });
+    var an = $('authNome');
+    if(an) an.addEventListener('keydown', function(e){ if(e.key === 'Enter') sendMagicLink(); });
     var t = $('nTeam');
     if(t) t.addEventListener('change', async function(){
       state.teamId = t.value; lsSet('vst_team', t.value); state.hierLoading = true; render();
@@ -848,6 +954,10 @@
     var a = t.dataset.act;
     if(a === 'enviar-link'){ sendMagicLink(); }
     else if(a === 'sair-supa'){ supabaseLogout(); }
+    else if(a === 'checar-acesso'){ t.disabled = true; refreshAcesso(); }
+    else if(a === 'acessos'){ state.view = 'acessos'; render(); loadPedidos(); }
+    else if(a === 'aprovar'){ t.disabled = true; decidirAcesso(t.dataset.id, 'aprovado'); }
+    else if(a === 'recusar'){ t.disabled = true; decidirAcesso(t.dataset.id, 'recusado'); }
     else if(a === 'conectar-clickup'){ location.href = API_BASE + '/auth/start'; }
     else if(a === 'sair-clickup'){ clickUpLogout(''); }
     else if(a === 'novo'){ state.view = 'novo'; state.novo = { folderId:'', listId:'', file:null }; if(state.token && !state.folders && !state.hierLoading) loadHierarchy(); else render(); }
@@ -902,16 +1012,15 @@
       state.authChecked = true;
       if(session && !had){
         state.authSent = false; state.authError = '';
-        startRealtime();
-        loadAll();
+        startSession();
       } else if(!session && had){
-        stopRealtime();
+        endSession();
       }
       render();
     });
     supabase.auth.getSession().then(function(r){
       state.session = r.data.session; state.authChecked = true;
-      if(state.session){ startRealtime(); loadAll(); }
+      if(state.session) startSession();
       render();
     });
   }
