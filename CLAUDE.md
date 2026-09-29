@@ -38,6 +38,16 @@ Uma IIFE com JS no estilo ES5 (`var`, `function`, concatenação de strings) mai
 - **Seleção da hierarquia do ClickUp**: workspace (team) → espaço (prefere o salvo em `vst_space` ou um cujo nome combine com "pós-obra") → pasta = **prédio** → lista = **unidade**. As tasks são criadas na lista (`v.list_id`).
 - **Relatório** (`viewRelatorio`) é uma view otimizada para impressão (`@media print`, `.no-print`), com área de assinatura.
 
+## Módulo FVS (ficha de verificação de serviço)
+
+Segundo fluxo do app, ao lado da vistoria. Tela inicial `state.view = 'menu'` escolhe entre `home` (vistorias) e `fvs`; views do módulo: `fvs`, `fvs-novo`, `fvs-insp`, `fvs-rel`, `fvs-modelos` (admin), `fvs-modelo`. Setup em `supabase/fvs.sql` (tabelas + RLS + seed dos 31 modelos).
+
+- **Tabelas**: `fvs_modelos` (`codigo`, `nome`, `itens` jsonb com a lista de textos, `ativo`), `fvs_inspecoes` (cópia `modelo_codigo`/`modelo_nome`, `predio`/`unidade`/`list_id`, `local`, `inspetor`, `data_inspecao`, `observacoes`, `status` aberta|finalizada) e `fvs_itens` (uma linha por item da ficha: `status` NA|aprovado|reprovado|refeito ou null, `problema`, `acao`, `liberado_por`, foto, `task_id`/`task_url`). Ao criar a ficha, os textos do modelo são copiados para `fvs_itens`, então editar o modelo não muda fichas antigas. RLS: aprovados leem/escrevem fichas e itens; só `is_admin()` escreve modelos.
+- **Dados**: `loadFvs()` é separado de `loadAll()` e tem erro próprio (`state.fvs.error`), então a vistoria continua funcionando se o SQL ainda não foi rodado. Pagina com `fetchAll` (limite de 1000 linhas do PostgREST). Realtime das 3 tabelas chama `scheduleReloadFvs()`; `loadFvs` não re-renderiza enquanto há campo em foco ou `state.fsheet` aberto, para não apagar o que a pessoa digita.
+- **Status**: `fvsStatus(f)` = `finalizada` quando todo item é NA/aprovado/refeito. Reprovado e refeito abrem o sheet (`fsheet`) e só gravam ao salvar; NA/aprovado gravam direto e limpam problema/ação/foto.
+- **ClickUp** (`sendFvs`): cada item reprovado vira uma task na lista da unidade, com a foto anexada; idempotente como o `sendAll` (`task_id` e `foto_ok` salvos por etapa). Depois de ter `task_id`, o problema e a foto ficam travados e o item só pode ir para "refeito"; a task no ClickUp não é atualizada pelo app.
+- **Reuso**: `abasHtml()` (abas por empreendimento, usada pelas duas listas, com `vst_aba` e `vst_aba_fvs` no `localStorage`) e `hierState()` (workspace/espaço/prédio/unidade do ClickUp, usada por `viewNovo` e `viewFvsNovo`; os ids `nFolder`/`nList` servem aos dois).
+
 ## Estilo
 
 Tokens de cor em `:root`, com tema escuro via `prefers-color-scheme` e `[data-theme]`. Fontes: Space Grotesk (títulos), IBM Plex Sans/Mono. Layout mobile-first com `env(safe-area-inset-*)`. As prioridades (`Alta`/`Média`/`Baixa`) viram classes CSS `p-<prioridade>` e são mapeadas para a prioridade do ClickUp em `PRIO_NUM`.

@@ -37,6 +37,20 @@ A ordem importa: se o cadastro for aberto antes das regras novas, qualquer pesso
 
 Para tornar outra pessoa admin, rode `update public.usuarios set admin = true where email = '...';`.
 
+## FVS (ficha de verificação de serviço)
+
+Além da vistoria de entrega, o app tem o módulo **FVS**, para a conferência de obra no padrão PBQP-H. A tela inicial escolhe entre "Vistoria de entrega" e "FVS".
+
+- Cada FVS é um serviço (ex.: 012 - Execução de contrapiso) verificado em um local, numa data, por um inspetor.
+- Cada item recebe um resultado: **NA** (não se aplica), **Aprovado**, **Reprovado** ou **Refeito e aprovado**. Reprovado e refeito pedem a descrição do problema (com foto opcional); refeito pede também a ação executada e quem liberou.
+- Cada item reprovado vira uma task no ClickUp, na lista da unidade. A FVS fica **Conforme** quando todos os itens estão em NA, Aprovado ou Refeito.
+- O relatório (botão **Relatório**) tem os itens, os retrabalhos, as observações e as assinaturas, pronto para imprimir ou salvar em PDF.
+- Os 31 modelos do PBQP-H vêm carregados. Admins editam os modelos em **Modelos de FVS** (menu inicial). Mudar um modelo não altera as fichas já criadas.
+
+### Ativar (uma vez)
+
+No **SQL Editor** do Supabase, rode [`supabase/fvs.sql`](supabase/fvs.sql) (depois de `aprovacao-de-acesso.sql`). Ele cria as tabelas, as regras de acesso (só admin edita modelos) e carrega os 31 modelos. Pode ser rodado de novo sem duplicar nada. Sem esse SQL, a vistoria de entrega continua funcionando e a tela de FVS mostra um aviso de erro.
+
 ## Rodar localmente
 
 Não há build. Sirva a pasta com qualquer servidor estático, por exemplo:
