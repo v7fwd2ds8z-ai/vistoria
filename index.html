@@ -73,7 +73,7 @@
 
   .cards{ display:flex; flex-direction:column; gap:8px; }
   .tabs{ display:flex; gap:6px; overflow-x:auto; margin:0 -16px 12px; padding:0 16px 4px; -webkit-overflow-scrolling:touch; }
-  .tab{ flex:none; background:var(--surface); border:1px solid var(--line); color:var(--text); border-radius:16px; padding:6px 13px; font:inherit; font-size:13px; cursor:pointer; white-space:nowrap; }
+  .tab{ flex:none; background:var(--surface); border:1px solid var(--line); color:var(--ink); border-radius:16px; padding:6px 13px; font:inherit; font-size:13px; cursor:pointer; white-space:nowrap; }
   .tab.on{ background:var(--blue); border-color:var(--blue); color:#fff; }
   .tab small{ opacity:.7; margin-left:4px; }
   .card{ background:var(--surface); border:1px solid var(--line); border-left:4px solid var(--blue); border-radius:var(--radius); padding:13px 14px; cursor:pointer; display:flex; justify-content:space-between; gap:12px; align-items:center; }
@@ -151,6 +151,30 @@
   .sign{ display:flex; gap:40px; margin-top:54px; }
   .sign div{ flex:1; border-top:1px solid var(--ink); padding-top:6px; font-size:12.5px; color:var(--ink-soft); text-align:center; }
 
+  .fitem{ background:var(--surface); border:1px solid var(--line); border-left:4px solid var(--line); border-radius:var(--radius); padding:11px 12px; margin-bottom:8px; }
+  .fitem.s-aprovado, .fitem.s-refeito{ border-left-color:var(--green); }
+  .fitem.s-reprovado{ border-left-color:var(--orange); }
+  .fitem.s-NA{ border-left-color:var(--ink-soft); }
+  .fitem .ftxt{ display:flex; gap:10px; }
+  .fitem .fn{ font-family:'IBM Plex Mono',monospace; color:var(--ink-soft); min-width:22px; }
+  .fbtns{ display:flex; gap:6px; margin-top:9px; flex-wrap:wrap; }
+  .fb{ flex:1; min-width:64px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:7px 6px; font-size:12.5px; cursor:pointer; color:var(--ink); }
+  .fb:disabled{ opacity:.4; cursor:default; }
+  .fb.on{ color:#fff; }
+  .fb.on.aprovado, .fb.on.refeito{ background:var(--green); border-color:var(--green); }
+  .fb.on.reprovado{ background:var(--orange); border-color:var(--orange); }
+  .fb.on.NA{ background:var(--ink-soft); border-color:var(--ink-soft); }
+  .fdet{ margin-top:8px; font-size:13px; color:var(--ink-soft); white-space:pre-wrap; cursor:pointer; }
+  .fdet strong{ color:var(--ink); font-weight:600; }
+  .fdet .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:6px; }
+  .fdet img.th{ width:64px; height:64px; object-fit:cover; border-radius:var(--radius); border:1px solid var(--line); }
+  .meta-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:4px 16px; font-size:13px; margin:8px 0 14px; }
+  .meta-grid b{ display:block; font-size:11.5px; font-weight:500; color:var(--ink-soft); }
+  .rtab{ width:100%; border-collapse:collapse; margin:8px 0 16px; font-size:13px; }
+  .rtab th, .rtab td{ border:1px solid var(--line); padding:5px 7px; text-align:left; vertical-align:top; }
+  .rtab th{ background:var(--paper-alt); font-weight:600; }
+  .rtab .res{ white-space:nowrap; font-weight:600; }
+  .rtab tr{ page-break-inside:avoid; break-inside:avoid; }
   @media (max-width:560px){
     .rdef{ flex-direction:column; }
     .rdef img{ width:100%; height:auto; max-height:220px; }
@@ -192,14 +216,15 @@
   var SIGNED_URL_TTL = 6 * 3600;
 
   var state = {
-    view:'home', session:null, authChecked:false,
+    view:'menu', session:null, authChecked:false,
     authEmail:'', authSent:false, authBusy:false, authError:'',
     token:null, user:null, cuError:'',
     sessionUid:null, perfil:null, perfilChecked:false, perfilError:null, pedidos:[],
     vistorias:[], dataReady:false, dataError:null,
     currentId:null, zoom:1, sheet:null, confirmDelV:false,
     teams:[], teamId:null, spaces:[], spaceId:null, folders:null, hierError:null, hierLoading:false,
-    novo:{ folderId:'', listId:'', file:null }, aba:''
+    novo:{ folderId:'', listId:'', file:null }, aba:'', abaFvs:'',
+    fvs:{ modelos:[], inspecoes:[], ready:false, error:null }, fcurId:null, fsheet:null, fnovo:{ modeloId:'', local:'', inspetor:'', data:'' }, fm:null, confirmDelF:false
   };
 
   function $(id){ return document.getElementById(id); }
@@ -211,6 +236,7 @@
   function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
   function lsSet(k, v){ try{ if(v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); }catch(e){} }
   state.aba = lsGet('vst_aba') || '';
+  state.abaFvs = lsGet('vst_aba_fvs') || '';
   var toastTimer;
   function toast(msg, err){
     var t = $('toast'); t.textContent = msg; t.className = 'toast' + (err ? ' err' : ''); t.hidden = false;
@@ -359,6 +385,9 @@
     try{
       channels.push(supabase.channel('vistorias-rt').on('postgres_changes', { event:'*', schema:'public', table:'vistorias' }, scheduleReload).subscribe());
       channels.push(supabase.channel('defeitos-rt').on('postgres_changes', { event:'*', schema:'public', table:'defeitos' }, scheduleReload).subscribe());
+      ['fvs_modelos', 'fvs_inspecoes', 'fvs_itens'].forEach(function(t){
+        channels.push(supabase.channel(t + '-rt').on('postgres_changes', { event:'*', schema:'public', table:t }, scheduleReloadFvs).subscribe());
+      });
     }catch(e){}
   }
   function stopRealtime(){
@@ -388,10 +417,11 @@
   async function refreshAcesso(){
     var had = isAprovado();
     await loadPerfil();
-    if(isAprovado() && !had){ startRealtime(); loadAll(); }
+    if(isAprovado() && !had){ startRealtime(); loadAll(); loadFvs(); }
     else if(!isAprovado() && had){
       stopRealtime();
-      state.vistorias = []; state.dataReady = false; state.view = 'home'; state.currentId = null; state.sheet = null;
+      state.vistorias = []; state.dataReady = false; state.view = 'menu'; state.currentId = null; state.sheet = null;
+      resetFvs();
     }
     if(isAdmin()) loadPedidos(); else state.pedidos = [];
     render();
@@ -419,7 +449,8 @@
   function endSession(){
     stopRealtime(); unwatchAcesso();
     state.sessionUid = null; state.perfil = null; state.perfilChecked = false; state.perfilError = null; state.pedidos = [];
-    state.vistorias = []; state.dataReady = false; state.view = 'home'; state.currentId = null; state.sheet = null;
+    state.vistorias = []; state.dataReady = false; state.view = 'menu'; state.currentId = null; state.sheet = null;
+    resetFvs();
   }
   async function decidirAcesso(id, status){
     try{
@@ -699,6 +730,251 @@
     }catch(e){ toast('Não foi possível excluir: ' + shorten((e && e.message) || 'erro', 120), true); }
   }
 
+  // ---- FVS (ficha de verificação de serviço) ----
+  var FVS_ST = { NA:'Não se aplica', aprovado:'Aprovado', reprovado:'Reprovado', refeito:'Refeito e aprovado' };
+  var FVS_BTN = { NA:'NA', aprovado:'Aprovado', reprovado:'Reprovado', refeito:'Refeito' };
+  function fmtDia(d){ var p = String(d || '').split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : ''; }
+  function hoje(){ var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+  function nomeUsuario(){ return (state.perfil && state.perfil.nome) || (state.session && state.session.user && state.session.user.email) || ''; }
+  function cmpCodigo(a, b){ return a.codigo.localeCompare(b.codigo, 'pt-BR', { numeric:true }); }
+  function curF(){ return state.fvs.inspecoes.filter(function(f){ return f.id === state.fcurId; })[0] || null; }
+  function fItem(f, id){ return f.itens.filter(function(i){ return i.id === id; })[0] || null; }
+  function fvsItemOk(it){ return it.status === 'NA' || it.status === 'aprovado' || it.status === 'refeito'; }
+  function fvsStatus(f){ return f.itens.length && f.itens.every(fvsItemOk) ? 'finalizada' : 'aberta'; }
+  function fvsPendEnvio(it){ return it.status === 'reprovado' && (!it.task_id || (it.foto_path && !it.foto_ok)); }
+  function resetFvs(){
+    state.fvs = { modelos:[], inspecoes:[], ready:false, error:null }; state.fcurId = null; state.fsheet = null; state.fm = null; state.confirmDelF = false;
+  }
+  async function fetchAll(table, orders){
+    var out = [], from = 0, size = 1000;
+    for(;;){
+      var q = supabase.from(table).select('*');
+      orders.forEach(function(o){ q = q.order(o[0], { ascending:o[1] }); });
+      var r = await q.range(from, from + size - 1);
+      if(r.error) throw r.error;
+      out = out.concat(r.data || []);
+      if(!r.data || r.data.length < size) break;
+      from += size;
+    }
+    return out;
+  }
+  async function loadFvs(){
+    state.fvs.error = null;
+    try{
+      var modelos = await fetchAll('fvs_modelos', [['codigo', true]]);
+      var insp = await fetchAll('fvs_inspecoes', [['created_at', false], ['id', true]]);
+      var itens = await fetchAll('fvs_itens', [['inspecao_id', true], ['n', true]]);
+      var by = {}, paths = {};
+      itens.forEach(function(i){ (by[i.inspecao_id] = by[i.inspecao_id] || []).push(i); if(i.foto_path) paths[i.foto_path] = 1; });
+      var list = Object.keys(paths);
+      var urls = await Promise.all(list.map(resolveUrl));
+      var map = {}; list.forEach(function(pt, k){ map[pt] = urls[k]; });
+      itens.forEach(function(i){ i._fotoUrl = i.foto_path ? map[i.foto_path] : ''; });
+      insp.forEach(function(f){ f.itens = by[f.id] || []; });
+      modelos.sort(cmpCodigo);
+      state.fvs.modelos = modelos; state.fvs.inspecoes = insp;
+    }catch(e){
+      state.fvs.error = 'Não consegui carregar as FVS: ' + sbErrorText(e) + ' (o SQL supabase/fvs.sql já foi rodado no Supabase?)';
+    }
+    state.fvs.ready = true;
+    var ae = document.activeElement;
+    if(state.fsheet || (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) && $('root').contains(ae))) return;
+    render();
+  }
+  var reloadFvsTimer = null;
+  function scheduleReloadFvs(){ clearTimeout(reloadFvsTimer); reloadFvsTimer = setTimeout(loadFvs, 400); }
+
+  async function updateFvsItem(id, patch){
+    patch.updated_at = new Date().toISOString();
+    var r = await supabase.from('fvs_itens').update(patch).eq('id', id);
+    if(r.error) throw new Error(sbErrorText(r.error));
+  }
+  async function updateFvsInsp(id, patch){
+    patch.updated_at = new Date().toISOString();
+    var r = await supabase.from('fvs_inspecoes').update(patch).eq('id', id);
+    if(r.error) throw new Error(sbErrorText(r.error));
+  }
+  async function syncFvsStatus(f){
+    var st = fvsStatus(f);
+    if(st !== f.status){ f.status = st; await updateFvsInsp(f.id, { status: st }); }
+  }
+
+  async function createFvs(){
+    var n = state.novo, m = state.fnovo;
+    var modelo = state.fvs.modelos.filter(function(x){ return x.id === m.modeloId; })[0];
+    var folder = (state.folders || []).filter(function(f){ return f.id === n.folderId; })[0];
+    var list = folder && folder.lists.filter(function(l){ return l.id === n.listId; })[0];
+    if(!modelo){ toast('Escolha a FVS.', true); return; }
+    if(!(modelo.itens || []).length){ toast('Essa FVS não tem itens de verificação.', true); return; }
+    if(!folder || !list){ toast('Escolha o prédio e a unidade.', true); return; }
+    if(!m.local.trim()){ toast('Informe o local verificado.', true); return; }
+    if(!m.inspetor.trim()){ toast('Informe quem está inspecionando.', true); return; }
+    if(!m.data){ toast('Informe a data da inspeção.', true); return; }
+    var row = null;
+    try{
+      busy('Criando a FVS...');
+      var r = await supabase.from('fvs_inspecoes').insert({
+        modelo_id: modelo.id, modelo_codigo: modelo.codigo, modelo_nome: modelo.nome,
+        predio: folder.name, unidade: list.name, list_id: list.id, local: m.local.trim(), inspetor: m.inspetor.trim(),
+        data_inspecao: m.data, status:'aberta', created_by: state.session.user.email
+      }).select().single();
+      if(r.error) throw new Error(sbErrorText(r.error));
+      row = r.data;
+      var ins = await supabase.from('fvs_itens').insert(modelo.itens.map(function(t, i){ return { inspecao_id: row.id, n: i + 1, texto: t }; })).select();
+      if(ins.error) throw new Error(sbErrorText(ins.error));
+      row.itens = (ins.data || []).sort(function(a, b){ return a.n - b.n; });
+      state.fvs.inspecoes.unshift(row);
+      state.fcurId = row.id; state.view = 'fvs-insp'; state.confirmDelF = false;
+      state.novo = { folderId:'', listId:'', file:null };
+      busy(null); render();
+    }catch(e){
+      if(row){ try{ await supabase.from('fvs_inspecoes').delete().eq('id', row.id); }catch(x){} }
+      busy(null); toast('Não consegui criar a FVS: ' + shorten((e && e.message) || 'erro', 140), true);
+    }
+  }
+
+  async function fvsSetStatus(itemId, st){
+    var f = curF(); if(!f) return;
+    var it = fItem(f, itemId); if(!it) return;
+    if(it.task_id && st !== 'reprovado' && st !== 'refeito'){ toast('Essa reprovação já está no ClickUp. Só dá para marcar como refeito.', true); return; }
+    if(st === 'reprovado' || st === 'refeito'){ state.fsheet = { itemId:itemId, status:st, draft:null }; render(); return; }
+    var novo = it.status === st ? null : st;
+    var patch = { status:novo, problema:null, acao:null, liberado_por:null, foto_path:null, foto_ok:false };
+    try{
+      await updateFvsItem(it.id, patch);
+      Object.assign(it, patch); it._fotoUrl = '';
+      await syncFvsStatus(f);
+      render();
+    }catch(e){ toast('Não foi possível salvar: ' + shorten((e && e.message) || 'erro', 120), true); }
+  }
+  async function fvsApproveRest(){
+    var f = curF(); if(!f) return;
+    var pend = f.itens.filter(function(i){ return !i.status; });
+    if(!pend.length) return;
+    try{
+      var r = await supabase.from('fvs_itens').update({ status:'aprovado', updated_at:new Date().toISOString() }).eq('inspecao_id', f.id).is('status', null);
+      if(r.error) throw new Error(sbErrorText(r.error));
+      pend.forEach(function(i){ i.status = 'aprovado'; });
+      await syncFvsStatus(f);
+      render(); toast(pend.length + (pend.length === 1 ? ' item aprovado.' : ' itens aprovados.'));
+    }catch(e){ toast('Não foi possível salvar: ' + shorten((e && e.message) || 'erro', 120), true); }
+  }
+  async function saveFvsSheet(){
+    var f = curF(), s = state.fsheet; if(!f || !s) return;
+    var it = fItem(f, s.itemId); if(!it) return;
+    var lock = !!it.task_id;
+    var prob = lock ? it.problema : $('fProb').value.trim();
+    if(!prob){ toast('Descreva o problema encontrado.', true); $('fProb').focus(); return; }
+    var acao = null, lib = null;
+    if(s.status === 'refeito'){
+      acao = $('fAcao').value.trim(); lib = $('fLib').value.trim();
+      if(!acao){ toast('Descreva a ação executada.', true); $('fAcao').focus(); return; }
+      if(!lib){ toast('Informe quem liberou.', true); $('fLib').focus(); return; }
+    }
+    var btn = $('fSave'); btn.disabled = true;
+    try{
+      var fotoPath = it.foto_path, fotoOk = it.foto_ok;
+      if(!lock && s.draft && s.draft.blob){
+        busy('Guardando a foto...');
+        fotoPath = await uploadFile(s.draft.blob, 'fotos'); fotoOk = false;
+      }
+      var patch = { status:s.status, problema:prob, acao:acao, liberado_por:lib, foto_path:fotoPath, foto_ok:fotoOk };
+      await updateFvsItem(it.id, patch);
+      Object.assign(it, patch);
+      if(fotoPath) it._fotoUrl = await resolveUrl(fotoPath);
+      await syncFvsStatus(f);
+      busy(null); state.fsheet = null; render();
+      toast(s.status === 'reprovado' ? 'Item reprovado.' : 'Item refeito e aprovado.');
+    }catch(e){ busy(null); btn.disabled = false; toast('Não foi possível salvar: ' + shorten((e && e.message) || 'erro', 140), true); }
+  }
+  async function sendFvs(){
+    var f = curF(); if(!f) return;
+    var list = f.itens.filter(fvsPendEnvio);
+    if(!list.length){ toast('Nada pendente para enviar.'); return; }
+    var onde = f.predio + ' / ' + f.unidade + (f.local ? ' / ' + f.local : '');
+    var okCount = 0, failCount = 0, stop = false, warn = '';
+    for(var i = 0; i < list.length && !stop; i++){
+      var it = list[i];
+      busy('Enviando item ' + it.n + ' (' + (i+1) + ' de ' + list.length + ')...');
+      it.erro = null;
+      try{
+        if(!it.task_id){
+          var desc = '**FVS ' + f.modelo_codigo + ' - ' + f.modelo_nome + '**\n' +
+            '**Local:** ' + onde + '\n' +
+            '**Data da inspeção:** ' + fmtDia(f.data_inspecao) + '\n' +
+            '**Inspecionado por:** ' + (f.inspetor || 'Não informado') + '\n' +
+            '**Item ' + it.n + ' (reprovado):** ' + it.texto + '\n\n' +
+            '**Problema encontrado:**\n' + it.problema;
+          var res = await cu('list/' + f.list_id + '/task', { method:'POST', json:{
+            name: 'FVS ' + f.modelo_codigo + ' - ' + (f.local || f.unidade || 'Sem local') + ': ' + shorten(it.problema, 70),
+            markdown_description: desc,
+            priority: 3
+          }});
+          if(!res || !res.id) throw { code:'http', message:'O ClickUp não devolveu o ID da task.' };
+          it.task_id = res.id; it.task_url = res.url || ('https://app.clickup.com/t/' + res.id);
+          await updateFvsItem(it.id, { task_id:it.task_id, task_url:it.task_url });
+        }
+      }catch(e){
+        failCount++; it.erro = e.message || 'Falha ao criar a task.';
+        if(ambiguous(e)) warn = 'Uma task pode ter sido criada mesmo com o erro. Confira no ClickUp antes de tentar de novo.';
+        if(e.code === 'auth'){ busy(null); try{ await updateFvsItem(it.id, { erro:it.erro }); }catch(x){} clickUpLogout(e.message); return; }
+        if(stopErr(e)) stop = true;
+        try{ await updateFvsItem(it.id, { erro:it.erro }); }catch(x){}
+        continue;
+      }
+      try{
+        if(it.foto_path && !it.foto_ok){
+          var fr = await fetch(it._fotoUrl); var fb = await fr.blob();
+          var fd = new FormData(); fd.append('attachment', fb, 'fvs-' + f.modelo_codigo + '-item-' + it.n + '-foto.jpg');
+          await cu('task/' + it.task_id + '/attachment', { method:'POST', form: fd });
+          it.foto_ok = true; await updateFvsItem(it.id, { foto_ok:true });
+        }
+        okCount++;
+      }catch(e){
+        failCount++; it.erro = 'Task criada, mas o anexo falhou: ' + (e.message || 'erro');
+        if(ambiguous(e)) warn = 'Um anexo pode ter subido mesmo com o erro. Confira a task antes de reenviar.';
+        if(e.code === 'auth'){ busy(null); try{ await updateFvsItem(it.id, { erro:it.erro }); }catch(x){} clickUpLogout(e.message); return; }
+        if(stopErr(e)) stop = true;
+        try{ await updateFvsItem(it.id, { erro:it.erro }); }catch(x){}
+      }
+    }
+    busy(null);
+    if(failCount === 0) toast(okCount + (okCount === 1 ? ' reprovação enviada ao ClickUp.' : ' reprovações enviadas ao ClickUp.'));
+    else toast(okCount + ' enviadas, ' + failCount + ' com problema. ' + warn, true);
+    render();
+  }
+  async function deleteFvs(){
+    var f = curF(); if(!f) return;
+    try{
+      var r = await supabase.from('fvs_inspecoes').delete().eq('id', f.id);
+      if(r.error) throw new Error(sbErrorText(r.error));
+      state.fvs.inspecoes = state.fvs.inspecoes.filter(function(x){ return x.id !== f.id; });
+      state.fcurId = null; state.view = 'fvs'; state.confirmDelF = false; render();
+      toast('FVS excluída para todo mundo.');
+    }catch(e){ toast('Não foi possível excluir: ' + shorten((e && e.message) || 'erro', 120), true); }
+  }
+  async function saveModelo(){
+    var m = state.fm; if(!m || !isAdmin()) return;
+    var cod = $('mCod').value.trim(), nome = $('mNome').value.trim();
+    var itens = $('mItens').value.split('\n').map(function(t){ return t.trim(); }).filter(Boolean);
+    var ativo = $('mAtivo').value === '1';
+    if(!cod){ toast('Informe o código da FVS.', true); $('mCod').focus(); return; }
+    if(!nome){ toast('Informe o nome da FVS.', true); $('mNome').focus(); return; }
+    if(!itens.length){ toast('Coloque ao menos um item de verificação.', true); $('mItens').focus(); return; }
+    var btn = $('mSave'); btn.disabled = true;
+    try{
+      var row = { codigo:cod, nome:nome, itens:itens, ativo:ativo, updated_at:new Date().toISOString() };
+      var r = m.id ? await supabase.from('fvs_modelos').update(row).eq('id', m.id) : await supabase.from('fvs_modelos').insert(row);
+      if(r.error){
+        if(r.error.code === '23505') throw new Error('já existe uma FVS com esse código.');
+        throw new Error(sbErrorText(r.error));
+      }
+      state.fm = null; state.view = 'fvs-modelos';
+      await loadFvs(); render();
+      toast('Modelo salvo.');
+    }catch(e){ btn.disabled = false; toast('Não foi possível salvar: ' + shorten((e && e.message) || 'erro', 140), true); }
+  }
+
   async function sendMagicLink(){
     var email = $('authEmail').value.trim();
     var nome = $('authNome') ? $('authNome').value.trim() : '';
@@ -749,33 +1025,53 @@
   }
 
   function folderIdDaAba(){
-    if(!state.aba || !state.folders) return '';
-    var f = state.folders.filter(function(x){ return x.name === state.aba; })[0];
+    var aba = state.view === 'fvs-novo' ? state.abaFvs : state.aba;
+    if(!aba || !state.folders) return '';
+    var f = state.folders.filter(function(x){ return x.name === aba; })[0];
     return f ? f.id : '';
   }
 
-  function viewHome(){
-    var h = userBar() + '<div class="top"><div><h1>Vistoria de entrega</h1><div class="sub">Marque os defeitos na planta e envie ao ClickUp</div></div>' +
-      '<button class="btn" data-act="novo">Nova vistoria</button></div>';
-    if(state.dataError) h += '<div class="notice err">' + esc(state.dataError) + '</div>';
+  function abasHtml(rows, ativa, act){
+    var contagem = {}, nomes = [];
+    rows.forEach(function(v){ var pr = v.predio || 'Sem empreendimento'; if(!(pr in contagem)){ contagem[pr] = 0; nomes.push(pr); } contagem[pr]++; });
+    nomes.sort(function(a,b){ return a.localeCompare(b, 'pt-BR', { numeric:true }); });
+    if(ativa && !(ativa in contagem)) ativa = '';
+    var html = '';
+    if(nomes.length > 1){
+      html = '<div class="tabs no-print">' + [''].concat(nomes).map(function(n){
+        return '<button class="tab' + (n === ativa ? ' on' : '') + '" data-act="' + act + '" data-id="' + esc(n) + '">' + (n ? esc(n) + '<small>' + contagem[n] + '</small>' : 'Todos<small>' + rows.length + '</small>') + '</button>';
+      }).join('') + '</div>';
+    }
+    var lista = ativa ? rows.filter(function(v){ return (v.predio || 'Sem empreendimento') === ativa; }) : rows;
+    return { html:html, lista:lista, ativa:ativa };
+  }
+
+  function viewMenu(){
+    var abertas = state.vistorias.filter(function(v){ return v.status !== 'finalizada'; }).length;
+    var fabertas = state.fvs.inspecoes.filter(function(f){ return f.status !== 'finalizada'; }).length;
+    var h = userBar() + '<div class="top"><div><h1>Vistoria e FVS</h1><div class="sub">O que você vai fazer?</div></div></div>';
     var np = isAdmin() ? pendentes().length : 0;
     if(np) h += '<div class="notice">' + np + (np === 1 ? ' pedido de acesso aguardando' : ' pedidos de acesso aguardando') + ' aprovação. <button class="link" data-act="acessos">Ver pedidos</button></div>';
+    h += '<div class="cards">' +
+      '<div class="card" data-act="home"><div><div class="t">Vistoria de entrega</div><div class="m">Marque defeitos na planta e envie ao ClickUp</div></div>' + (abertas ? '<span class="chip amber">' + abertas + ' em andamento</span>' : '') + '</div>' +
+      '<div class="card" data-act="fvs"><div><div class="t">FVS</div><div class="m">Ficha de verificação de serviço (PBQP-H)</div></div>' + (fabertas ? '<span class="chip amber">' + fabertas + ' em andamento</span>' : '') + '</div>' +
+      (isAdmin() ? '<div class="card" data-act="fvs-modelos"><div><div class="t">Modelos de FVS</div><div class="m">Editar as fichas e seus itens de verificação</div></div></div>' : '') +
+      '</div>';
+    return h;
+  }
+
+  function viewHome(){
+    var h = userBar() + '<button class="link back" data-act="menu">Início</button>' +
+      '<div class="top"><div><h1>Vistoria de entrega</h1><div class="sub">Marque os defeitos na planta e envie ao ClickUp</div></div>' +
+      '<button class="btn" data-act="novo">Nova vistoria</button></div>';
+    if(state.dataError) h += '<div class="notice err">' + esc(state.dataError) + '</div>';
     if(!state.dataReady){ h += '<div class="empty"><p>Carregando...</p></div>'; return h; }
     if(!state.vistorias.length){
       h += '<div class="empty"><p>Nenhuma vistoria ainda. Crie a primeira escolhendo a unidade e enviando a planta.</p></div>';
       return h;
     }
-    var contagem = {}, nomes = [];
-    state.vistorias.forEach(function(v){ var p = v.predio || 'Sem empreendimento'; if(!(p in contagem)){ contagem[p] = 0; nomes.push(p); } contagem[p]++; });
-    nomes.sort(function(a,b){ return a.localeCompare(b, 'pt-BR', { numeric:true }); });
-    if(state.aba && !(state.aba in contagem)) state.aba = '';
-    if(nomes.length > 1){
-      h += '<div class="tabs no-print">' + ['' ].concat(nomes).map(function(n){
-        return '<button class="tab' + (n === state.aba ? ' on' : '') + '" data-act="aba" data-id="' + esc(n) + '">' + (n ? esc(n) + '<small>' + contagem[n] + '</small>' : 'Todos<small>' + state.vistorias.length + '</small>') + '</button>';
-      }).join('') + '</div>';
-    }
-    var lista = state.aba ? state.vistorias.filter(function(v){ return (v.predio || 'Sem empreendimento') === state.aba; }) : state.vistorias;
-    h += '<div class="cards">' + lista.map(function(v){
+    var ab = abasHtml(state.vistorias, state.aba, 'aba'); state.aba = ab.ativa;
+    h += ab.html + '<div class="cards">' + ab.lista.map(function(v){
       var ds = v.defeitos || [], done = ds.filter(isComplete).length;
       var chip = v.status === 'finalizada' ? '<span class="chip green">Enviada</span>' : (ds.length ? '<span class="chip amber">Em andamento</span>' : '<span class="chip">Nova</span>');
       return '<div class="card ' + (v.status === 'finalizada' ? 'done' : '') + '" data-act="abrir" data-id="' + esc(v.id) + '">' +
@@ -795,7 +1091,7 @@
   }
 
   function viewAcessos(){
-    var h = userBar() + '<button class="link back" data-act="home">Voltar</button>' +
+    var h = userBar() + '<button class="link back" data-act="menu">Voltar</button>' +
       '<div class="top"><div><h1>Pedidos de acesso</h1><div class="sub">Aprove quem pode usar o sistema</div></div></div>';
     function item(u, acoes){
       return '<div class="card pedido"><div><div class="t">' + esc(u.nome || u.email) + '</div><div class="m">' + (u.nome ? esc(u.email) + ', ' : '') + 'pediu em ' + fmtDate(u.created_at) + '</div></div>' +
@@ -809,33 +1105,37 @@
     return h;
   }
 
+  function hierState(what){
+    if(!state.token) return { ok:false, html:'<div class="empty"><p>Para criar ' + what + ', conecte sua conta do ClickUp — é de lá que vêm os prédios e as unidades.</p><button class="btn" data-act="conectar-clickup">Conectar ClickUp</button></div>' };
+    if(state.hierLoading) return { ok:false, html:'<div class="empty"><p>Buscando as unidades no ClickUp...</p></div>' };
+    if(state.hierError) return { ok:false, html:'<div class="notice err">' + esc(state.hierError) + '</div><button class="btn secondary" data-act="reload-h">Tentar de novo</button>' };
+    if(!state.folders) return { ok:false, html:'' };
+    var n = state.novo, h = '';
+    var folder = state.folders.filter(function(f){ return f.id === n.folderId; })[0];
+    if(state.teams.length > 1){
+      h += '<label class="lbl">Workspace</label><select id="nTeam">' + state.teams.map(function(t){ return '<option value="' + esc(t.id) + '"' + (String(t.id) === String(state.teamId) ? ' selected' : '') + '>' + esc(t.name) + '</option>'; }).join('') + '</select>';
+    }
+    if(state.spaces.length > 1){
+      h += '<label class="lbl">Espaço</label><select id="nSpace">' + state.spaces.map(function(s){ return '<option value="' + esc(s.id) + '"' + (String(s.id) === String(state.spaceId) ? ' selected' : '') + '>' + esc(s.name) + '</option>'; }).join('') + '</select>';
+    }
+    h += '<label class="lbl">Prédio (pasta no ClickUp)</label><select id="nFolder"><option value="">Selecione</option>' +
+      state.folders.map(function(f){ return '<option value="' + esc(f.id) + '"' + (f.id === n.folderId ? ' selected' : '') + '>' + esc(f.name) + '</option>'; }).join('') + '</select>';
+    h += '<label class="lbl">Unidade (lista no ClickUp)</label><select id="nList"' + (folder ? '' : ' disabled') + '><option value="">Selecione</option>' +
+      (folder ? folder.lists.map(function(l){ return '<option value="' + esc(l.id) + '"' + (l.id === n.listId ? ' selected' : '') + '>' + esc(l.name) + '</option>'; }).join('') : '') + '</select>';
+    return { ok:true, html:h };
+  }
+
   function viewNovo(){
     var n = state.novo;
     var h = userBar() + '<button class="link back" data-act="home">Voltar</button>' +
       '<div class="top"><div><h1>Nova vistoria</h1><div class="sub">Escolha a unidade e envie a planta</div></div></div>';
-    if(!state.token){
-      h += '<div class="empty"><p>Para criar uma vistoria, conecte sua conta do ClickUp — é de lá que vêm os prédios e as unidades.</p><button class="btn" data-act="conectar-clickup">Conectar ClickUp</button></div>';
-      return h;
-    }
-    if(state.hierLoading) h += '<div class="empty"><p>Buscando as unidades no ClickUp...</p></div>';
-    else if(state.hierError) h += '<div class="notice err">' + esc(state.hierError) + '</div><button class="btn secondary" data-act="reload-h">Tentar de novo</button>';
-    else if(state.folders){
-      var folder = state.folders.filter(function(f){ return f.id === n.folderId; })[0];
-      if(state.teams.length > 1){
-        h += '<label class="lbl">Workspace</label><select id="nTeam">' + state.teams.map(function(t){ return '<option value="' + esc(t.id) + '"' + (String(t.id) === String(state.teamId) ? ' selected' : '') + '>' + esc(t.name) + '</option>'; }).join('') + '</select>';
-      }
-      if(state.spaces.length > 1){
-        h += '<label class="lbl">Espaço</label><select id="nSpace">' + state.spaces.map(function(s){ return '<option value="' + esc(s.id) + '"' + (String(s.id) === String(state.spaceId) ? ' selected' : '') + '>' + esc(s.name) + '</option>'; }).join('') + '</select>';
-      }
-      h += '<label class="lbl">Prédio (pasta no ClickUp)</label><select id="nFolder"><option value="">Selecione</option>' +
-        state.folders.map(function(f){ return '<option value="' + esc(f.id) + '"' + (f.id === n.folderId ? ' selected' : '') + '>' + esc(f.name) + '</option>'; }).join('') + '</select>';
-      h += '<label class="lbl">Unidade (lista no ClickUp)</label><select id="nList"' + (folder ? '' : ' disabled') + '><option value="">Selecione</option>' +
-        (folder ? folder.lists.map(function(l){ return '<option value="' + esc(l.id) + '"' + (l.id === n.listId ? ' selected' : '') + '>' + esc(l.name) + '</option>'; }).join('') : '') + '</select>';
-      h += '<label class="lbl">Planta da unidade (PDF ou imagem)</label><input type="file" id="nFile" accept="application/pdf,image/*">' +
-        (n.file ? '<div class="sub" style="margin-top:6px">Arquivo: ' + esc(n.file.name) + '</div>' : '') +
-        '<div class="sub" style="margin-top:6px">Em PDF com várias páginas, uso a primeira.</div>';
-      h += '<div style="margin-top:20px"><button class="btn" data-act="criar">Criar vistoria</button></div>';
-    }
+    var hs = hierState('uma vistoria');
+    h += hs.html;
+    if(!hs.ok) return h;
+    h += '<label class="lbl">Planta da unidade (PDF ou imagem)</label><input type="file" id="nFile" accept="application/pdf,image/*">' +
+      (n.file ? '<div class="sub" style="margin-top:6px">Arquivo: ' + esc(n.file.name) + '</div>' : '') +
+      '<div class="sub" style="margin-top:6px">Em PDF com várias páginas, uso a primeira.</div>';
+    h += '<div style="margin-top:20px"><button class="btn" data-act="criar">Criar vistoria</button></div>';
     return h;
   }
 
@@ -892,6 +1192,172 @@
     return h;
   }
 
+  // ---- telas de FVS ----
+  function fvsCounts(f){
+    var c = { total:f.itens.length, resp:0, rep:0 };
+    f.itens.forEach(function(i){ if(i.status) c.resp++; if(i.status === 'reprovado') c.rep++; });
+    return c;
+  }
+  function fvsChip(f){
+    var c = fvsCounts(f);
+    if(f.status === 'finalizada') return '<span class="chip green">Conforme</span>';
+    if(c.rep) return '<span class="chip orange">' + c.rep + (c.rep === 1 ? ' reprovado' : ' reprovados') + '</span>';
+    return c.resp ? '<span class="chip amber">Em andamento</span>' : '<span class="chip">Nova</span>';
+  }
+
+  function viewFvs(){
+    var h = userBar() + '<button class="link back" data-act="menu">Início</button>' +
+      '<div class="top"><div><h1>FVS</h1><div class="sub">Ficha de verificação de serviço</div></div>' +
+      '<button class="btn" data-act="fvs-novo">Nova FVS</button></div>';
+    if(state.fvs.error) h += '<div class="notice err">' + esc(state.fvs.error) + '</div>';
+    if(!state.fvs.ready){ h += '<div class="empty"><p>Carregando...</p></div>'; return h; }
+    var rows = state.fvs.inspecoes;
+    if(!rows.length){
+      if(!state.fvs.error) h += '<div class="empty"><p>Nenhuma FVS ainda. Crie a primeira escolhendo o serviço e o local.</p></div>';
+      return h;
+    }
+    var ab = abasHtml(rows, state.abaFvs, 'aba-fvs'); state.abaFvs = ab.ativa;
+    h += ab.html + '<div class="cards">' + ab.lista.map(function(f){
+      var c = fvsCounts(f);
+      return '<div class="card ' + (f.status === 'finalizada' ? 'done' : '') + '" data-act="fvs-abrir" data-id="' + esc(f.id) + '">' +
+        '<div><div class="t">FVS ' + esc(f.modelo_codigo) + ' · ' + esc(f.modelo_nome) + '</div>' +
+        '<div class="m">' + esc(f.predio || '') + ' / ' + esc(f.unidade || '') + (f.local ? ', ' + esc(f.local) : '') + '</div>' +
+        '<div class="m">' + fmtDia(f.data_inspecao) + ', ' + c.resp + ' de ' + c.total + ' itens verificados</div></div>' + fvsChip(f) + '</div>';
+    }).join('') + '</div>';
+    return h;
+  }
+
+  function viewFvsNovo(){
+    var m = state.fnovo;
+    var h = userBar() + '<button class="link back" data-act="fvs">Voltar</button>' +
+      '<div class="top"><div><h1>Nova FVS</h1><div class="sub">Escolha o serviço e o local a verificar</div></div></div>';
+    if(state.fvs.error) return h + '<div class="notice err">' + esc(state.fvs.error) + '</div>';
+    var ativos = state.fvs.modelos.filter(function(x){ return x.ativo || x.id === m.modeloId; });
+    var hs = hierState('uma FVS');
+    h += hs.html;
+    if(!hs.ok) return h;
+    h += '<label class="lbl" for="fModelo">Serviço (FVS)</label><select id="fModelo"><option value="">Selecione</option>' +
+      ativos.map(function(x){ return '<option value="' + esc(x.id) + '"' + (x.id === m.modeloId ? ' selected' : '') + '>' + esc(x.codigo + ' - ' + x.nome) + '</option>'; }).join('') + '</select>';
+    h += '<label class="lbl" for="fLocal">Local verificado</label><input id="fLocal" list="locList" value="' + esc(m.local) + '" maxlength="120" placeholder="Ex: Banheiro da suíte, Pavimento 3">' +
+      '<datalist id="locList">' + AMBIENTES.map(function(a){ return '<option value="' + esc(a) + '">'; }).join('') + '</datalist>';
+    h += '<label class="lbl" for="fInsp">Inspecionado por</label><input id="fInsp" value="' + esc(m.inspetor) + '" maxlength="120">';
+    h += '<label class="lbl" for="fData">Data da inspeção</label><input id="fData" type="date" value="' + esc(m.data) + '">';
+    h += '<div style="margin-top:20px"><button class="btn" data-act="fvs-criar">Criar FVS</button></div>';
+    return h;
+  }
+
+  function fvsItemHtml(f, it){
+    var lock = !!it.task_id;
+    var btns = ['NA', 'aprovado', 'reprovado', 'refeito'].map(function(st){
+      var dis = lock && st !== 'reprovado' && st !== 'refeito';
+      return '<button class="fb ' + st + (it.status === st ? ' on' : '') + '" data-act="fst" data-id="' + esc(it.id) + '" data-st="' + st + '" title="' + esc(FVS_ST[st]) + '"' + (dis ? ' disabled' : '') + '>' + FVS_BTN[st] + '</button>';
+    }).join('');
+    var det = '';
+    if(it.status === 'reprovado' || it.status === 'refeito'){
+      det = '<div class="fdet" data-act="fedit" data-id="' + esc(it.id) + '"><div><strong>Problema:</strong> ' + esc(it.problema || '') + '</div>' +
+        (it.status === 'refeito' ? '<div><strong>Ação executada:</strong> ' + esc(it.acao || '') + '</div><div><strong>Liberado por:</strong> ' + esc(it.liberado_por || '') + '</div>' : '') +
+        '<div class="row">' + (it.foto_path ? '<img class="th" src="' + esc(it._fotoUrl || '') + '" alt="Foto do item ' + it.n + '">' : '') +
+        (it.task_id ? (it.task_url ? '<a class="link" href="' + esc(it.task_url) + '" target="_blank" rel="noopener">Abrir no ClickUp</a>' : '<span class="chip green">No ClickUp</span>') : (it.status === 'reprovado' ? '<span class="chip">Não enviado</span>' : '')) +
+        (it.task_id && it.foto_path && !it.foto_ok ? '<span class="chip amber">Anexo pendente</span>' : '') + '</div>' +
+        (it.erro ? '<div style="color:var(--orange);margin-top:4px">' + esc(it.erro) + '</div>' : '') + '</div>';
+    }
+    return '<div class="fitem' + (it.status ? ' s-' + it.status : '') + '"><div class="ftxt"><span class="fn">' + it.n + '</span><span>' + esc(it.texto) + '</span></div>' +
+      '<div class="fbtns">' + btns + '</div>' + det + '</div>';
+  }
+
+  function viewFvsInsp(){
+    var f = curF(); if(!f) return userBar() + '<button class="link back" data-act="fvs">Voltar</button><div class="empty"><p>FVS não encontrada.</p></div>';
+    var c = fvsCounts(f), pend = f.itens.filter(fvsPendEnvio).length, semResp = c.total - c.resp;
+    var h = userBar() + '<button class="link back" data-act="fvs">Voltar</button>' +
+      '<div class="top"><div><h1>FVS ' + esc(f.modelo_codigo) + '</h1><div class="sub">' + esc(f.modelo_nome) + '</div></div>' +
+      '<button class="btn secondary small" data-act="f-rel">Relatório</button></div>';
+    h += '<div class="meta-grid"><div><b>Prédio / unidade</b>' + esc(f.predio || '') + ' / ' + esc(f.unidade || '') + '</div><div><b>Local</b>' + esc(f.local || '-') + '</div>' +
+      '<div><b>Data</b>' + fmtDia(f.data_inspecao) + '</div><div><b>Inspecionado por</b>' + esc(f.inspetor || '-') + '</div></div>';
+    h += '<div class="toolbar"><span class="hint">' + c.resp + ' de ' + c.total + ' itens verificados' + (c.rep ? ', ' + c.rep + (c.rep === 1 ? ' reprovado' : ' reprovados') : '') + '.</span>' +
+      (semResp ? '<button class="btn secondary small" data-act="f-aprovar-resto">Aprovar os ' + semResp + ' restantes</button>' : '') + '</div>';
+    h += f.itens.map(function(it){ return fvsItemHtml(f, it); }).join('');
+    h += '<label class="lbl" for="fObs">Observações</label><textarea id="fObs" placeholder="Anotações gerais sobre esta verificação">' + esc(f.observacoes || '') + '</textarea>';
+    h += '<div class="zone no-print">' + (state.confirmDelF
+      ? 'Excluir esta FVS para todo mundo? As tasks já enviadas ao ClickUp continuam lá. <button class="link danger" data-act="f-excluir-ok">Confirmar exclusão</button> <button class="link" data-act="f-excluir-cancel">Cancelar</button>'
+      : '<button class="link danger" data-act="f-excluir">Excluir esta FVS</button>') + '</div>';
+    h += '<div class="actions no-print">' + (state.token
+      ? '<button class="btn blue" data-act="f-enviar"' + (pend ? '' : ' disabled') + '>' + (pend ? 'Enviar ' + pend + (pend === 1 ? ' reprovação ao ClickUp' : ' reprovações ao ClickUp') : (c.rep ? 'Reprovações já enviadas ao ClickUp' : 'Nada a enviar ao ClickUp')) + '</button>'
+      : '<button class="btn blue" data-act="conectar-clickup">Conectar ClickUp para enviar</button>') + '</div>';
+    return h;
+  }
+
+  function fvsSheetHtml(){
+    var s = state.fsheet, f = curF(); if(!s || !f) return '';
+    var it = fItem(f, s.itemId); if(!it) return '';
+    var lock = !!it.task_id, refeito = s.status === 'refeito';
+    var fotoSrc = s.draft ? s.draft.url : (it._fotoUrl || '');
+    var h = '<div class="sheet" role="dialog" aria-label="Item ' + it.n + '"><h2>Item ' + it.n + ': ' + (refeito ? 'refeito e aprovado' : 'reprovado') + '</h2>';
+    h += '<div class="sub">' + esc(it.texto) + '</div>';
+    if(lock) h += '<div class="sub" style="margin-top:6px">Esta reprovação já está no ClickUp, então o problema e a foto não podem mais ser alterados por aqui.</div>';
+    h += '<label class="lbl" for="fProb">Descrição do problema</label><textarea id="fProb"' + (lock ? ' disabled' : '') + ' placeholder="O que está fora do especificado e onde">' + esc(it.problema || '') + '</textarea>';
+    if(refeito){
+      h += '<label class="lbl" for="fAcao">Ação executada</label><textarea id="fAcao" placeholder="O que foi feito para corrigir">' + esc(it.acao || '') + '</textarea>';
+      h += '<label class="lbl" for="fLib">Liberado por</label><input id="fLib" value="' + esc(it.liberado_por || nomeUsuario()) + '" maxlength="120">';
+    }
+    h += '<label class="lbl">Foto</label><div class="foto"><img id="fFotoPrev" alt="Foto do item"' + (fotoSrc ? ' src="' + esc(fotoSrc) + '"' : ' hidden') + '>' +
+      (lock ? '' : '<input type="file" id="fFoto" accept="image/*"><div class="sub" style="margin-top:5px">No celular, abre a câmera ou a galeria.</div>') + '</div>';
+    h += '<div class="btns"><span class="spacer"></span><button class="btn secondary" data-act="f-fechar">Cancelar</button><button class="btn" id="fSave" data-act="f-salvar">Salvar</button></div></div>';
+    return h;
+  }
+
+  function viewFvsRel(){
+    var f = curF(); if(!f) return '';
+    var c = fvsCounts(f);
+    var h = '<div class="no-print" style="display:flex;justify-content:space-between;gap:10px;margin-bottom:14px"><button class="link" data-act="f-voltar">Voltar</button><button class="btn small" data-act="imprimir">Imprimir ou salvar em PDF</button></div>';
+    h += '<div class="report"><h1>FVS ' + esc(f.modelo_codigo) + ' · ' + esc(f.modelo_nome) + '</h1>';
+    h += '<div class="meta-grid"><div><b>Prédio / unidade</b>' + esc(f.predio || '') + ' / ' + esc(f.unidade || '') + '</div><div><b>Local</b>' + esc(f.local || '-') + '</div>' +
+      '<div><b>Data da inspeção</b>' + fmtDia(f.data_inspecao) + '</div><div><b>Inspecionado por</b>' + esc(f.inspetor || '-') + '</div></div>';
+    h += '<table class="rtab"><thead><tr><th>Nº</th><th>Item de inspeção</th><th>Resultado</th></tr></thead><tbody>' + f.itens.map(function(it){
+      return '<tr><td>' + it.n + '</td><td>' + esc(it.texto) + '</td><td class="res">' + (it.status ? esc(FVS_ST[it.status]) : 'Não verificado') + '</td></tr>';
+    }).join('') + '</tbody></table>';
+    var ret = f.itens.filter(function(i){ return i.status === 'reprovado' || i.status === 'refeito'; });
+    if(ret.length){
+      h += '<h2 class="sec">Retrabalho</h2><table class="rtab"><thead><tr><th>Item</th><th>Problema</th><th>Ação executada</th><th>Liberado por</th></tr></thead><tbody>' + ret.map(function(it){
+        return '<tr><td>' + it.n + '</td><td>' + esc(it.problema || '') + '</td><td>' + (it.status === 'refeito' ? esc(it.acao || '') : 'Pendente') + '</td><td>' + (it.status === 'refeito' ? esc(it.liberado_por || '') : '') + '</td></tr>';
+      }).join('') + '</tbody></table>';
+      var comFoto = ret.filter(function(i){ return i.foto_path; });
+      h += comFoto.map(function(it){
+        return '<div class="rdef"><img src="' + esc(it._fotoUrl || '') + '" alt="Foto do item ' + it.n + '"><div><strong>Item ' + it.n + '</strong>: ' + esc(it.texto) + '</div></div>';
+      }).join('');
+    }
+    if(f.observacoes) h += '<h2 class="sec">Observações</h2><div style="white-space:pre-wrap">' + esc(f.observacoes) + '</div>';
+    h += '<div class="meta" style="margin-top:14px">Resultado: ' + (f.status === 'finalizada' ? 'todos os itens conformes' : c.resp + ' de ' + c.total + ' itens verificados' + (c.rep ? ', ' + c.rep + ' reprovado(s) em aberto' : '')) + '.</div>';
+    h += '<div class="sign"><div>Inspetor</div><div>Responsável técnico</div></div></div>';
+    return h;
+  }
+
+  function viewFvsModelos(){
+    var h = userBar() + '<button class="link back" data-act="menu">Início</button>' +
+      '<div class="top"><div><h1>Modelos de FVS</h1><div class="sub">Fichas e itens de verificação</div></div><button class="btn" data-act="fmodelo" data-id="">Novo modelo</button></div>';
+    if(!isAdmin()) return h + '<div class="empty"><p>Só administradores editam os modelos.</p></div>';
+    if(state.fvs.error) h += '<div class="notice err">' + esc(state.fvs.error) + '</div>';
+    if(!state.fvs.ready) return h + '<div class="empty"><p>Carregando...</p></div>';
+    h += '<div class="cards">' + state.fvs.modelos.map(function(x){
+      return '<div class="card" data-act="fmodelo" data-id="' + esc(x.id) + '"><div><div class="t">' + esc(x.codigo) + ' · ' + esc(x.nome) + '</div><div class="m">' + (x.itens || []).length + ' itens</div></div>' +
+        (x.ativo ? '' : '<span class="chip">Inativo</span>') + '</div>';
+    }).join('') + '</div>';
+    return h;
+  }
+
+  function viewFvsModelo(){
+    var m = state.fm;
+    var h = userBar() + '<button class="link back" data-act="fvs-modelos">Voltar</button>' +
+      '<div class="top"><div><h1>' + (m && m.id ? 'Editar modelo' : 'Novo modelo') + '</h1><div class="sub">Um item de verificação por linha</div></div></div>';
+    if(!m || !isAdmin()) return h + '<div class="empty"><p>Modelo não encontrado.</p></div>';
+    h += '<label class="lbl" for="mCod">Código</label><input id="mCod" value="' + esc(m.codigo) + '" maxlength="20" placeholder="Ex: 012">';
+    h += '<label class="lbl" for="mNome">Nome do serviço</label><input id="mNome" value="' + esc(m.nome) + '" maxlength="200" placeholder="Ex: Execução de contrapiso">';
+    h += '<label class="lbl" for="mItens">Itens de verificação</label><textarea id="mItens" style="min-height:280px" placeholder="Utilização de EPIs e EPCs&#10;Limpeza do local">' + esc(m.itensTxt) + '</textarea>';
+    h += '<label class="lbl" for="mAtivo">Situação</label><select id="mAtivo"><option value="1"' + (m.ativo ? ' selected' : '') + '>Ativo (aparece ao criar uma FVS)</option><option value="0"' + (m.ativo ? '' : ' selected') + '>Inativo</option></select>';
+    h += '<div class="sub" style="margin-top:10px">Mudar o modelo não altera as FVS que já foram criadas.</div>';
+    h += '<div style="margin-top:20px;display:flex;gap:10px"><button class="btn" id="mSave" data-act="fmodelo-salvar">Salvar</button><button class="btn secondary" data-act="fvs-modelos">Cancelar</button></div>';
+    return h;
+  }
+
   function sheetHtml(){
     var s = state.sheet; if(!s) return '';
     var v = cur(), d = s.defId ? v.defeitos.filter(function(q){ return q.id === s.defId; })[0] : null;
@@ -923,6 +1389,13 @@
     else if(!state.perfilChecked) h = '<div class="empty"><p>Carregando...</p></div>';
     else if(!isAprovado()) h = viewAguardando();
     else if(state.view === 'acessos') h = viewAcessos();
+    else if(state.view === 'menu') h = viewMenu();
+    else if(state.view === 'fvs') h = viewFvs();
+    else if(state.view === 'fvs-novo') h = viewFvsNovo();
+    else if(state.view === 'fvs-insp') h = viewFvsInsp();
+    else if(state.view === 'fvs-rel') h = viewFvsRel();
+    else if(state.view === 'fvs-modelos') h = viewFvsModelos();
+    else if(state.view === 'fvs-modelo') h = viewFvsModelo();
     else if(state.view === 'novo') h = viewNovo();
     else if(state.view === 'vistoria') h = viewVistoria();
     else if(state.view === 'relatorio') h = viewRelatorio();
@@ -930,6 +1403,7 @@
     root.innerHTML = h;
     if(state.session && state.view === 'vistoria'){ var p2 = $('planScroll'); if(p2){ p2.scrollLeft = sl; p2.scrollTop = st; } }
     if(state.session && isAprovado() && state.sheet && state.view === 'vistoria'){ ov.innerHTML = sheetHtml(); ov.hidden = false; }
+    else if(state.session && isAprovado() && state.fsheet && state.view === 'fvs-insp'){ ov.innerHTML = fvsSheetHtml(); ov.hidden = false; }
     else { ov.innerHTML = ''; ov.hidden = true; }
     wireForms();
   }
@@ -957,6 +1431,38 @@
     if(l) l.addEventListener('change', function(){ state.novo.listId = l.value; });
     var nf = $('nFile');
     if(nf) nf.addEventListener('change', function(){ state.novo.file = nf.files && nf.files[0] || null; render(); });
+    var fm = $('fModelo');
+    if(fm) fm.addEventListener('change', function(){ state.fnovo.modeloId = fm.value; });
+    var fl = $('fLocal');
+    if(fl) fl.addEventListener('input', function(){ state.fnovo.local = fl.value; });
+    var fi = $('fInsp');
+    if(fi) fi.addEventListener('input', function(){ state.fnovo.inspetor = fi.value; });
+    var fd = $('fData');
+    if(fd) fd.addEventListener('change', function(){ state.fnovo.data = fd.value; });
+    var fo = $('fObs');
+    if(fo) fo.addEventListener('change', async function(){
+      var f = curF(); if(!f) return;
+      var val = fo.value.trim() || null;
+      try{ await updateFvsInsp(f.id, { observacoes: val }); f.observacoes = val; }
+      catch(e){ toast('Não foi possível salvar as observações: ' + shorten((e && e.message) || 'erro', 120), true); }
+    });
+    var ff = $('fFoto');
+    if(ff) ff.addEventListener('change', async function(){
+      var file = ff.files && ff.files[0]; if(!file || !state.fsheet) return;
+      try{
+        busy('Preparando a foto...');
+        var blob = await compressImage(file, 1600, 700 * 1024);
+        state.fsheet.draft = { blob: blob, url: URL.createObjectURL(blob) };
+        var prev = $('fFotoPrev'); if(prev){ prev.src = state.fsheet.draft.url; prev.hidden = false; }
+        busy(null);
+      }catch(e){ busy(null); toast('Não consegui usar essa foto.', true); }
+    });
+    [['mCod', 'codigo'], ['mNome', 'nome'], ['mItens', 'itensTxt']].forEach(function(pair){
+      var el = $(pair[0]);
+      if(el) el.addEventListener('input', function(){ if(state.fm) state.fm[pair[1]] = el.value; });
+    });
+    var ma = $('mAtivo');
+    if(ma) ma.addEventListener('change', function(){ if(state.fm) state.fm.ativo = ma.value === '1'; });
     var sf = $('sFoto');
     if(sf) sf.addEventListener('change', async function(){
       var file = sf.files && sf.files[0]; if(!file || !state.sheet) return;
@@ -984,6 +1490,38 @@
     else if(a === 'novo'){ state.view = 'novo'; state.novo = { folderId:folderIdDaAba(), listId:'', file:null }; if(state.token && !state.folders && !state.hierLoading) loadHierarchy(); else render(); }
     else if(a === 'aba'){ state.aba = t.dataset.id; lsSet('vst_aba', state.aba); render(); }
     else if(a === 'reload-h'){ loadHierarchy(); }
+    else if(a === 'menu'){ state.view = 'menu'; state.currentId = null; state.fcurId = null; state.sheet = null; state.fsheet = null; state.confirmDelV = false; state.confirmDelF = false; render(); loadAll(); loadFvs(); }
+    else if(a === 'fvs'){ state.view = 'fvs'; state.fcurId = null; state.fsheet = null; state.confirmDelF = false; render(); loadFvs(); }
+    else if(a === 'aba-fvs'){ state.abaFvs = t.dataset.id; lsSet('vst_aba_fvs', state.abaFvs); render(); }
+    else if(a === 'fvs-novo'){
+      state.view = 'fvs-novo'; state.novo = { folderId:folderIdDaAba(), listId:'', file:null };
+      state.fnovo = { modeloId:'', local:'', inspetor:nomeUsuario(), data:hoje() };
+      if(state.token && !state.folders && !state.hierLoading) loadHierarchy(); else render();
+    }
+    else if(a === 'fvs-criar'){ createFvs(); }
+    else if(a === 'fvs-abrir'){ state.fcurId = t.dataset.id; state.view = 'fvs-insp'; state.confirmDelF = false; render(); }
+    else if(a === 'fst'){ fvsSetStatus(t.dataset.id, t.dataset.st); }
+    else if(a === 'fedit'){
+      if(e.target.closest('a')) return;
+      var fe = curF(), fit = fe && fItem(fe, t.dataset.id);
+      if(fit){ state.fsheet = { itemId:fit.id, status:fit.status, draft:null }; render(); }
+    }
+    else if(a === 'f-aprovar-resto'){ fvsApproveRest(); }
+    else if(a === 'f-salvar'){ saveFvsSheet(); }
+    else if(a === 'f-fechar'){ state.fsheet = null; render(); }
+    else if(a === 'f-enviar'){ sendFvs(); }
+    else if(a === 'f-rel'){ state.view = 'fvs-rel'; render(); }
+    else if(a === 'f-voltar'){ state.view = 'fvs-insp'; render(); }
+    else if(a === 'f-excluir'){ state.confirmDelF = true; render(); }
+    else if(a === 'f-excluir-cancel'){ state.confirmDelF = false; render(); }
+    else if(a === 'f-excluir-ok'){ deleteFvs(); }
+    else if(a === 'fvs-modelos'){ state.view = 'fvs-modelos'; state.fm = null; render(); loadFvs(); }
+    else if(a === 'fmodelo'){
+      var mo = state.fvs.modelos.filter(function(x){ return x.id === t.dataset.id; })[0];
+      state.fm = mo ? { id:mo.id, codigo:mo.codigo, nome:mo.nome, itensTxt:(mo.itens || []).join('\n'), ativo:!!mo.ativo } : { id:null, codigo:'', nome:'', itensTxt:'', ativo:true };
+      state.view = 'fvs-modelo'; render();
+    }
+    else if(a === 'fmodelo-salvar'){ saveModelo(); }
     else if(a === 'home'){ state.view = 'home'; state.currentId = null; state.confirmDelV = false; render(); loadAll(); }
     else if(a === 'voltar-v'){ state.view = 'vistoria'; render(); }
     else if(a === 'abrir'){ state.currentId = t.dataset.id; state.view = 'vistoria'; state.zoom = 1; state.confirmDelV = false; render(); }
@@ -1002,7 +1540,7 @@
     else if(a === 'excluir-v-cancel'){ state.confirmDelV = false; render(); }
     else if(a === 'excluir-v-ok'){ deleteVistoria(); }
   });
-  $('overlay').addEventListener('click', function(e){ if(e.target.id === 'overlay'){ state.sheet = null; render(); } });
+  $('overlay').addEventListener('click', function(e){ if(e.target.id === 'overlay'){ state.sheet = null; state.fsheet = null; render(); } });
 
   var down = null;
   document.addEventListener('pointerdown', function(e){
