@@ -72,6 +72,10 @@
   .back{ margin-bottom:10px; }
 
   .cards{ display:flex; flex-direction:column; gap:8px; }
+  .tabs{ display:flex; gap:6px; overflow-x:auto; margin:0 -16px 12px; padding:0 16px 4px; -webkit-overflow-scrolling:touch; }
+  .tab{ flex:none; background:var(--surface); border:1px solid var(--line); color:var(--text); border-radius:16px; padding:6px 13px; font:inherit; font-size:13px; cursor:pointer; white-space:nowrap; }
+  .tab.on{ background:var(--blue); border-color:var(--blue); color:#fff; }
+  .tab small{ opacity:.7; margin-left:4px; }
   .card{ background:var(--surface); border:1px solid var(--line); border-left:4px solid var(--blue); border-radius:var(--radius); padding:13px 14px; cursor:pointer; display:flex; justify-content:space-between; gap:12px; align-items:center; }
   .card.done{ border-left-color:var(--green); }
   .card:hover{ background:var(--paper-alt); }
@@ -195,7 +199,7 @@
     vistorias:[], dataReady:false, dataError:null,
     currentId:null, zoom:1, sheet:null, confirmDelV:false,
     teams:[], teamId:null, spaces:[], spaceId:null, folders:null, hierError:null, hierLoading:false,
-    novo:{ folderId:'', listId:'', file:null }
+    novo:{ folderId:'', listId:'', file:null }, aba:''
   };
 
   function $(id){ return document.getElementById(id); }
@@ -206,6 +210,7 @@
   function cur(){ return state.vistorias.filter(function(v){ return v.id === state.currentId; })[0] || null; }
   function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
   function lsSet(k, v){ try{ if(v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); }catch(e){} }
+  state.aba = lsGet('vst_aba') || '';
   var toastTimer;
   function toast(msg, err){
     var t = $('toast'); t.textContent = msg; t.className = 'toast' + (err ? ' err' : ''); t.hidden = false;
@@ -536,7 +541,7 @@
     }
     out.sort(function(a,b){ return a.name.localeCompare(b.name, 'pt-BR', { numeric:true }); });
     state.folders = out;
-    state.novo.folderId = ''; state.novo.listId = '';
+    state.novo.folderId = folderIdDaAba(); state.novo.listId = '';
     if(!out.length) throw { message:'Não encontrei pastas nesse espaço do ClickUp.' };
   }
 
@@ -743,6 +748,12 @@
     return h;
   }
 
+  function folderIdDaAba(){
+    if(!state.aba || !state.folders) return '';
+    var f = state.folders.filter(function(x){ return x.name === state.aba; })[0];
+    return f ? f.id : '';
+  }
+
   function viewHome(){
     var h = userBar() + '<div class="top"><div><h1>Vistoria de entrega</h1><div class="sub">Marque os defeitos na planta e envie ao ClickUp</div></div>' +
       '<button class="btn" data-act="novo">Nova vistoria</button></div>';
@@ -754,7 +765,17 @@
       h += '<div class="empty"><p>Nenhuma vistoria ainda. Crie a primeira escolhendo a unidade e enviando a planta.</p></div>';
       return h;
     }
-    h += '<div class="cards">' + state.vistorias.map(function(v){
+    var contagem = {}, nomes = [];
+    state.vistorias.forEach(function(v){ var p = v.predio || 'Sem empreendimento'; if(!(p in contagem)){ contagem[p] = 0; nomes.push(p); } contagem[p]++; });
+    nomes.sort(function(a,b){ return a.localeCompare(b, 'pt-BR', { numeric:true }); });
+    if(state.aba && !(state.aba in contagem)) state.aba = '';
+    if(nomes.length > 1){
+      h += '<div class="tabs no-print">' + ['' ].concat(nomes).map(function(n){
+        return '<button class="tab' + (n === state.aba ? ' on' : '') + '" data-act="aba" data-id="' + esc(n) + '">' + (n ? esc(n) + '<small>' + contagem[n] + '</small>' : 'Todos<small>' + state.vistorias.length + '</small>') + '</button>';
+      }).join('') + '</div>';
+    }
+    var lista = state.aba ? state.vistorias.filter(function(v){ return (v.predio || 'Sem empreendimento') === state.aba; }) : state.vistorias;
+    h += '<div class="cards">' + lista.map(function(v){
       var ds = v.defeitos || [], done = ds.filter(isComplete).length;
       var chip = v.status === 'finalizada' ? '<span class="chip green">Enviada</span>' : (ds.length ? '<span class="chip amber">Em andamento</span>' : '<span class="chip">Nova</span>');
       return '<div class="card ' + (v.status === 'finalizada' ? 'done' : '') + '" data-act="abrir" data-id="' + esc(v.id) + '">' +
@@ -960,7 +981,8 @@
     else if(a === 'recusar'){ t.disabled = true; decidirAcesso(t.dataset.id, 'recusado'); }
     else if(a === 'conectar-clickup'){ location.href = API_BASE + '/auth/start'; }
     else if(a === 'sair-clickup'){ clickUpLogout(''); }
-    else if(a === 'novo'){ state.view = 'novo'; state.novo = { folderId:'', listId:'', file:null }; if(state.token && !state.folders && !state.hierLoading) loadHierarchy(); else render(); }
+    else if(a === 'novo'){ state.view = 'novo'; state.novo = { folderId:folderIdDaAba(), listId:'', file:null }; if(state.token && !state.folders && !state.hierLoading) loadHierarchy(); else render(); }
+    else if(a === 'aba'){ state.aba = t.dataset.id; lsSet('vst_aba', state.aba); render(); }
     else if(a === 'reload-h'){ loadHierarchy(); }
     else if(a === 'home'){ state.view = 'home'; state.currentId = null; state.confirmDelV = false; render(); loadAll(); }
     else if(a === 'voltar-v'){ state.view = 'vistoria'; render(); }
