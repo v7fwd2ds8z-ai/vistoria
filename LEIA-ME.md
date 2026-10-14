@@ -37,6 +37,16 @@ A ordem importa: se o cadastro for aberto antes das regras novas, qualquer pesso
 
 Para tornar outra pessoa admin, rode `update public.usuarios set admin = true where email = '...';`.
 
+## Biblioteca de plantas
+
+Admins cadastram as plantas uma vez em **Biblioteca de plantas** (menu inicial): escolhem o prédio, selecionam vários arquivos de uma vez (PDF ou imagem, primeira página) e o nome do arquivo vira o nome da unidade. O app avisa quando o nome não bate com uma lista do ClickUp. Cadastrar de novo a mesma unidade substitui a planta.
+
+Ao criar uma vistoria, se o prédio e a unidade escolhidos têm planta cadastrada, o app usa essa planta (com opção de enviar outra). O nome do prédio e da unidade precisa ser igual ao da pasta e da lista no ClickUp. Vistorias já criadas guardam o arquivo que usaram, então trocar a planta na biblioteca não as altera.
+
+### Ativar (uma vez)
+
+No **SQL Editor** do Supabase, rode [`supabase/plantas.sql`](supabase/plantas.sql). Sem ele, a vistoria continua funcionando e só não encontra plantas cadastradas.
+
 ## Assinatura do cliente na vistoria
 
 Ao criar a vistoria o app pede **nome, CPF e e-mail do cliente**. Na vistoria, o botão **Colher assinatura** abre uma tela com o termo de vistoria e aceite (o que não estiver no relatório é tratado como assistência técnica, mantidas as garantias legais), uma caixa "li e concordo" e um quadro para o cliente assinar com o dedo. O relatório sai com o termo, a assinatura e as provas.

@@ -236,7 +236,8 @@
     teams:[], teamId:null, spaces:[], spaceId:null, folders:null, hierError:null, hierLoading:false,
     novo:{ folderId:'', listId:'', file:null }, aba:'', abaFvs:'',
     fvs:{ modelos:[], inspecoes:[], ready:false, error:null }, fcurId:null, fsheet:null, fnovo:{ modeloId:'', local:'', inspetor:'', data:'' }, fm:null, confirmDelF:false,
-    cli:{ nome:'', cpf:'', email:'', aceite:false }, sig:{ strokes:[] }
+    cli:{ nome:'', cpf:'', email:'', aceite:false }, sig:{ strokes:[] },
+    plantas:[], plantasReady:false, plantasError:null, lote:{ itens:[] }, confirmDelPl:''
   };
 
   function $(id){ return document.getElementById(id); }
@@ -431,11 +432,11 @@
   async function refreshAcesso(){
     var had = isAprovado();
     await loadPerfil();
-    if(isAprovado() && !had){ startRealtime(); loadAll(); loadFvs(); }
+    if(isAprovado() && !had){ startRealtime(); loadAll(); loadFvs(); loadPlantas(); }
     else if(!isAprovado() && had){
       stopRealtime();
       state.vistorias = []; state.dataReady = false; state.view = 'menu'; state.currentId = null; state.sheet = null;
-      resetFvs();
+      resetFvs(); state.plantas = []; state.plantasReady = false;
     }
     if(isAdmin()) loadPedidos(); else state.pedidos = [];
     render();
@@ -464,7 +465,7 @@
     stopRealtime(); unwatchAcesso();
     state.sessionUid = null; state.perfil = null; state.perfilChecked = false; state.perfilError = null; state.pedidos = [];
     state.vistorias = []; state.dataReady = false; state.view = 'menu'; state.currentId = null; state.sheet = null;
-    resetFvs();
+    resetFvs(); state.plantas = []; state.plantasReady = false;
   }
   async function decidirAcesso(id, status){
     try{
@@ -666,8 +667,12 @@
     if(!folder || !list){ toast('Escolha o prédio e a unidade.', true); return; }
     var er = clienteErro();
     if(er){ toast(er[1], true); var f0 = $(er[0]); if(f0) f0.focus(); return; }
-    if(!n.file){ toast('Envie a planta da unidade.', true); return; }
+    var pl = plantaDe(folder.name, list.name), usarLib = !!pl && !n.outra;
+    if(!usarLib && !n.file){ toast('Envie a planta da unidade.', true); return; }
     try{
+      var path;
+      if(usarLib) path = pl.planta_path;
+      else {
       busy('Preparando a planta...');
       var blob;
       if(/pdf$/i.test(n.file.type) || /\.pdf$/i.test(n.file.name)){
@@ -677,7 +682,8 @@
         blob = await compressImage(n.file, 2000, 8 * 1024 * 1024);
       }
       busy('Enviando a planta...');
-      var path = await uploadFile(blob, 'plantas');
+      path = await uploadFile(blob, 'plantas');
+      }
       var row = await insertVistoria({
         titulo: folder.name + ' / ' + list.name, predio: folder.name, unidade: list.name, list_id: list.id,
         cliente_nome: state.cli.nome.trim(), cliente_cpf: fmtCpf(state.cli.cpf), cliente_email: state.cli.email.trim().toLowerCase(),
@@ -745,6 +751,79 @@
       state.vistorias = state.vistorias.filter(function(x){ return x.id !== v.id; });
       state.currentId = null; state.view = 'home'; state.confirmDelV = false; render();
       toast('Vistoria excluída para todo mundo.');
+    }catch(e){ toast('Não foi possível excluir: ' + shorten((e && e.message) || 'erro', 120), true); }
+  }
+
+  // ---- biblioteca de plantas ----
+  function norm(x){ return String(x || '').trim().toLowerCase(); }
+  function plantaDe(predio, unidade){
+    var a = norm(predio), b = norm(unidade);
+    return state.plantas.filter(function(x){ return norm(x.predio) === a && norm(x.unidade) === b; })[0] || null;
+  }
+  function listasDaPasta(){
+    var f = (state.folders || []).filter(function(x){ return x.id === state.novo.folderId; })[0];
+    return f ? f.lists : [];
+  }
+  function nomeNaLista(nome){
+    var k = norm(nome);
+    return listasDaPasta().filter(function(l){ return norm(l.name) === k; })[0] || null;
+  }
+  async function loadPlantas(){
+    state.plantasError = null;
+    try{
+      var rows = await fetchAll('plantas', [['predio', true], ['unidade', true]]);
+      rows.sort(function(a, b){ return a.predio.localeCompare(b.predio, 'pt-BR', { numeric:true }) || a.unidade.localeCompare(b.unidade, 'pt-BR', { numeric:true }); });
+      state.plantas = rows;
+    }catch(e){ state.plantasError = 'Não consegui carregar a biblioteca de plantas: ' + sbErrorText(e); }
+    state.plantasReady = true;
+    var ae = document.activeElement;
+    if(ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) && $('root').contains(ae)) return;
+    render();
+  }
+  async function enviarPlantas(){
+    var folder = (state.folders || []).filter(function(x){ return x.id === state.novo.folderId; })[0];
+    var itens = state.lote.itens;
+    if(!folder){ toast('Escolha o prédio.', true); return; }
+    if(!itens.length){ toast('Escolha os arquivos das plantas.', true); return; }
+    var vistos = {};
+    for(var i = 0; i < itens.length; i++){
+      var nm = itens[i].unidade.trim();
+      if(!nm){ toast('Dê um nome de unidade para ' + itens[i].file.name + '.', true); return; }
+      var lst = nomeNaLista(nm), k = norm(lst ? lst.name : nm);
+      if(vistos[k]){ toast('Duas plantas estão com a unidade "' + nm + '".', true); return; }
+      vistos[k] = 1;
+    }
+    var ok = 0, falhas = [];
+    for(var j = 0; j < itens.length; j++){
+      var it = itens[j];
+      busy('Enviando planta ' + (j + 1) + ' de ' + itens.length + '...');
+      try{
+        var ls = nomeNaLista(it.unidade), nome = ls ? ls.name : it.unidade.trim();
+        var blob;
+        if(/pdf$/i.test(it.file.type) || /\.pdf$/i.test(it.file.name)) blob = await pdfToJpeg(it.file);
+        else blob = await compressImage(it.file, 2000, 8 * 1024 * 1024);
+        var path = await uploadFile(blob, 'plantas');
+        var r = await supabase.from('plantas').upsert({ predio:folder.name, unidade:nome, planta_path:path, created_by:state.session.user.email, updated_at:new Date().toISOString() }, { onConflict:'predio,unidade' });
+        if(r.error) throw new Error(sbErrorText(r.error));
+        ok++;
+      }catch(e){ falhas.push(it); }
+    }
+    busy(null);
+    await loadPlantas();
+    if(!falhas.length){
+      state.lote = { itens:[] }; state.view = 'plantas'; render();
+      toast(ok + (ok === 1 ? ' planta cadastrada.' : ' plantas cadastradas.'));
+    } else {
+      state.lote.itens = falhas; render();
+      toast(ok + ' cadastradas. ' + falhas.length + (falhas.length === 1 ? ' falhou e continua na lista.' : ' falharam e continuam na lista.'), true);
+    }
+  }
+  async function excluirPlanta(id){
+    try{
+      var r = await supabase.from('plantas').delete().eq('id', id);
+      if(r.error) throw new Error(sbErrorText(r.error));
+      state.plantas = state.plantas.filter(function(x){ return x.id !== id; });
+      state.confirmDelPl = ''; render(); toast('Planta removida da biblioteca.');
     }catch(e){ toast('Não foi possível excluir: ' + shorten((e && e.message) || 'erro', 120), true); }
   }
 
@@ -1189,6 +1268,7 @@
     h += '<div class="cards">' +
       '<div class="card" data-act="home"><div><div class="t">Vistoria de entrega</div><div class="m">Marque defeitos na planta e envie ao ClickUp</div></div>' + (abertas ? '<span class="chip amber">' + abertas + ' em andamento</span>' : '') + '</div>' +
       '<div class="card" data-act="fvs"><div><div class="t">FVS</div><div class="m">Ficha de verificação de serviço (PBQP-H)</div></div>' + (fabertas ? '<span class="chip amber">' + fabertas + ' em andamento</span>' : '') + '</div>' +
+      (isAdmin() ? '<div class="card" data-act="plantas"><div><div class="t">Biblioteca de plantas</div><div class="m">Plantas por prédio e unidade, usadas nas vistorias</div></div></div>' : '') +
       (isAdmin() ? '<div class="card" data-act="fvs-modelos"><div><div class="t">Modelos de FVS</div><div class="m">Editar as fichas e seus itens de verificação</div></div></div>' : '') +
       '</div>';
     return h;
@@ -1239,7 +1319,7 @@
     return h;
   }
 
-  function hierState(what){
+  function hierState(what, soPredio){
     if(!state.token) return { ok:false, html:'<div class="empty"><p>Para criar ' + what + ', conecte sua conta do ClickUp — é de lá que vêm os prédios e as unidades.</p><button class="btn" data-act="conectar-clickup">Conectar ClickUp</button></div>' };
     if(state.hierLoading) return { ok:false, html:'<div class="empty"><p>Buscando as unidades no ClickUp...</p></div>' };
     if(state.hierError) return { ok:false, html:'<div class="notice err">' + esc(state.hierError) + '</div><button class="btn secondary" data-act="reload-h">Tentar de novo</button>' };
@@ -1254,7 +1334,7 @@
     }
     h += '<label class="lbl">Prédio (pasta no ClickUp)</label><select id="nFolder"><option value="">Selecione</option>' +
       state.folders.map(function(f){ return '<option value="' + esc(f.id) + '"' + (f.id === n.folderId ? ' selected' : '') + '>' + esc(f.name) + '</option>'; }).join('') + '</select>';
-    h += '<label class="lbl">Unidade (lista no ClickUp)</label><select id="nList"' + (folder ? '' : ' disabled') + '><option value="">Selecione</option>' +
+    if(!soPredio) h += '<label class="lbl">Unidade (lista no ClickUp)</label><select id="nList"' + (folder ? '' : ' disabled') + '><option value="">Selecione</option>' +
       (folder ? folder.lists.map(function(l){ return '<option value="' + esc(l.id) + '"' + (l.id === n.listId ? ' selected' : '') + '>' + esc(l.name) + '</option>'; }).join('') : '') + '</select>';
     return { ok:true, html:h };
   }
@@ -1267,6 +1347,16 @@
     h += hs.html;
     if(!hs.ok) return h;
     h += clienteFieldsHtml();
+    var fo = (state.folders || []).filter(function(x){ return x.id === n.folderId; })[0];
+    var li = fo && fo.lists.filter(function(x){ return x.id === n.listId; })[0];
+    var pl = fo && li ? plantaDe(fo.name, li.name) : null;
+    if(pl && !n.outra){
+      h += '<label class="lbl">Planta da unidade</label><div class="card" style="cursor:default"><div style="display:flex;gap:12px;align-items:center"><img id="plantaPrev" data-path="' + esc(pl.planta_path) + '" alt="Planta cadastrada" style="width:110px;height:80px;object-fit:contain;background:var(--paper-alt);border:1px solid var(--line);border-radius:var(--radius)">' +
+        '<div><div class="t">Usando a planta cadastrada</div><div class="m">' + esc(pl.predio) + ' / ' + esc(pl.unidade) + '</div><button class="link" data-act="planta-outra">Usar outra planta</button></div></div></div>';
+      h += '<div style="margin-top:20px"><button class="btn" data-act="criar">Criar vistoria</button></div>';
+      return h;
+    }
+    if(pl && n.outra) h += '<div style="margin-top:12px"><button class="link" data-act="planta-lib">Voltar para a planta cadastrada</button></div>';
     h += '<label class="lbl">Planta da unidade (PDF ou imagem)</label><input type="file" id="nFile" accept="application/pdf,image/*">' +
       (n.file ? '<div class="sub" style="margin-top:6px">Arquivo: ' + esc(n.file.name) + '</div>' : '') +
       '<div class="sub" style="margin-top:6px">Em PDF com várias páginas, uso a primeira.</div>';
@@ -1357,6 +1447,53 @@
     h += '<h2 class="sec">Assinatura</h2><div class="sub">O cliente assina com o dedo no quadro.</div><div class="sigbox"><canvas id="sigCanvas"></canvas></div>' +
       '<div style="margin-top:8px"><button class="link" data-act="sig-limpar">Limpar assinatura</button></div>';
     h += '<div class="actions no-print"><button class="btn blue" id="sigOk" data-act="assinar-ok">Assinar e concluir</button></div>';
+    return h;
+  }
+
+  function viewPlantas(){
+    var h = userBar() + '<button class="link back" data-act="menu">Início</button>' +
+      '<div class="top"><div><h1>Biblioteca de plantas</h1><div class="sub">Uma planta por prédio e unidade, usada ao criar a vistoria</div></div><button class="btn" data-act="pl-novo">Cadastrar plantas</button></div>';
+    if(!isAdmin()) return h + '<div class="empty"><p>Só administradores gerenciam a biblioteca de plantas.</p></div>';
+    if(state.plantasError) h += '<div class="notice err">' + esc(state.plantasError) + '</div>';
+    if(!state.plantasReady) return h + '<div class="empty"><p>Carregando...</p></div>';
+    if(!state.plantas.length) return h + (state.plantasError ? '' : '<div class="empty"><p>Nenhuma planta cadastrada ainda. Toque em "Cadastrar plantas" e escolha os arquivos de um prédio.</p></div>');
+    var grupos = [], idx = {};
+    state.plantas.forEach(function(x){ if(!(x.predio in idx)){ idx[x.predio] = grupos.length; grupos.push({ nome:x.predio, itens:[] }); } grupos[idx[x.predio]].itens.push(x); });
+    grupos.forEach(function(g){
+      h += '<h2 class="sec">' + esc(g.nome) + ' <span class="chip">' + g.itens.length + '</span></h2><div class="cards">' + g.itens.map(function(x){
+        return '<div class="card pedido"><div><div class="t">' + esc(x.unidade) + '</div></div><div class="acoes">' +
+          (state.confirmDelPl === x.id
+            ? '<button class="btn small" data-act="pl-del-ok" data-id="' + esc(x.id) + '">Confirmar</button><button class="btn secondary small" data-act="pl-del-cancel">Cancelar</button>'
+            : '<button class="btn secondary small" data-act="pl-del" data-id="' + esc(x.id) + '">Excluir</button>') + '</div></div>';
+      }).join('') + '</div>';
+    });
+    h += '<div class="sub" style="margin-top:14px">Para trocar uma planta, cadastre de novo a mesma unidade: ela substitui a anterior. Vistorias já criadas continuam com a planta que usaram.</div>';
+    return h;
+  }
+
+  function viewPlantasLote(){
+    var h = userBar() + '<button class="link back" data-act="plantas">Voltar</button>' +
+      '<div class="top"><div><h1>Cadastrar plantas</h1><div class="sub">Escolha o prédio e os arquivos; o nome do arquivo vira a unidade</div></div></div>';
+    if(!isAdmin()) return h + '<div class="empty"><p>Só administradores gerenciam a biblioteca de plantas.</p></div>';
+    var hs = hierState('plantas', true);
+    h += hs.html;
+    if(!hs.ok) return h;
+    var itens = state.lote.itens;
+    h += '<label class="lbl" for="pFiles">Arquivos das plantas (PDF ou imagem)</label><input type="file" id="pFiles" multiple accept="application/pdf,image/*">' +
+      '<div class="sub" style="margin-top:6px">Em PDF com várias páginas, uso a primeira. Dá para escolher vários arquivos de uma vez.</div>';
+    if(itens.length){
+      var folder = (state.folders || []).filter(function(x){ return x.id === state.novo.folderId; })[0];
+      h += '<h2 class="sec">' + itens.length + (itens.length === 1 ? ' planta' : ' plantas') + '</h2><datalist id="unList">' + listasDaPasta().map(function(l){ return '<option value="' + esc(l.name) + '">'; }).join('') + '</datalist><div class="cards">' +
+        itens.map(function(it, i){
+          var ex = folder ? nomeNaLista(it.unidade) : null;
+          var aviso = !folder ? '<span class="chip">Escolha o prédio</span>' : (ex ? '<span class="chip green">Unidade encontrada</span>' + (plantaDe(folder.name, ex.name) ? ' <span class="chip amber">Substitui a atual</span>' : '') : '<span class="chip orange">Nome não encontrado no ClickUp</span>');
+          return '<div class="card pedido" style="flex-direction:column;align-items:stretch"><div class="m">' + esc(it.file.name) + '</div>' +
+            '<div style="display:flex;gap:8px;align-items:center"><input id="pU' + i + '" list="unList" value="' + esc(it.unidade) + '" maxlength="120" style="flex:1" aria-label="Unidade"><button class="btn secondary small" data-act="pl-rm" data-id="' + i + '">Tirar</button></div>' +
+            '<div style="margin-top:6px">' + aviso + '</div></div>';
+        }).join('') + '</div>';
+      h += '<div class="sub" style="margin-top:10px">Para a vistoria achar a planta sozinha, o nome da unidade precisa ser igual ao da lista no ClickUp.</div>';
+      h += '<div style="margin-top:16px"><button class="btn" data-act="pl-enviar">Cadastrar ' + itens.length + (itens.length === 1 ? ' planta' : ' plantas') + '</button></div>';
+    }
     return h;
   }
 
@@ -1565,6 +1702,8 @@
     else if(state.view === 'fvs-modelos') h = viewFvsModelos();
     else if(state.view === 'fvs-modelo') h = viewFvsModelo();
     else if(state.view === 'assinar') h = viewAssinar();
+    else if(state.view === 'plantas') h = viewPlantas();
+    else if(state.view === 'plantas-lote') h = viewPlantasLote();
     else if(state.view === 'novo') h = viewNovo();
     else if(state.view === 'vistoria') h = viewVistoria();
     else if(state.view === 'relatorio') h = viewRelatorio();
@@ -1597,9 +1736,25 @@
     var f = $('nFolder');
     if(f) f.addEventListener('change', function(){ state.novo.folderId = f.value; state.novo.listId = ''; render(); });
     var l = $('nList');
-    if(l) l.addEventListener('change', function(){ state.novo.listId = l.value; });
+    if(l) l.addEventListener('change', function(){ state.novo.listId = l.value; state.novo.outra = false; render(); });
     var nf = $('nFile');
     if(nf) nf.addEventListener('change', function(){ state.novo.file = nf.files && nf.files[0] || null; render(); });
+    var pf = $('pFiles');
+    if(pf) pf.addEventListener('change', function(){
+      Array.prototype.forEach.call(pf.files || [], function(file){
+        var base = file.name.replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ').replace(/\s+/g, ' ').trim();
+        var ex = nomeNaLista(base);
+        state.lote.itens.push({ file:file, unidade: ex ? ex.name : base });
+      });
+      render();
+    });
+    state.lote.itens.forEach(function(it, i){
+      var el = $('pU' + i);
+      if(el) el.addEventListener('input', function(){ it.unidade = el.value; });
+      if(el) el.addEventListener('change', function(){ render(); });
+    });
+    var pp = $('plantaPrev');
+    if(pp) resolveUrl(pp.dataset.path).then(function(u){ if(u && $('plantaPrev') === pp) pp.src = u; });
     var cn = $('cNome'), cc = $('cCpf'), ce = $('cEmail'), ca = $('cAceite');
     function termoLive(){ var tp = $('termoPrev'), vv = cur(); if(tp && vv) tp.textContent = termoTexto(termoVista(vv), (vv.defeitos || []).length); }
     if(cn) cn.addEventListener('input', function(){ state.cli.nome = cn.value; termoLive(); });
@@ -1663,9 +1818,21 @@
     else if(a === 'recusar'){ t.disabled = true; decidirAcesso(t.dataset.id, 'recusado'); }
     else if(a === 'conectar-clickup'){ location.href = API_BASE + '/auth/start'; }
     else if(a === 'sair-clickup'){ clickUpLogout(''); }
-    else if(a === 'novo'){ state.cli = { nome:'', cpf:'', email:'', aceite:false }; state.view = 'novo'; state.novo = { folderId:folderIdDaAba(), listId:'', file:null }; if(state.token && !state.folders && !state.hierLoading) loadHierarchy(); else render(); }
+    else if(a === 'novo'){ loadPlantas(); state.cli = { nome:'', cpf:'', email:'', aceite:false }; state.view = 'novo'; state.novo = { folderId:folderIdDaAba(), listId:'', file:null }; if(state.token && !state.folders && !state.hierLoading) loadHierarchy(); else render(); }
     else if(a === 'aba'){ state.aba = t.dataset.id; lsSet('vst_aba', state.aba); render(); }
     else if(a === 'reload-h'){ loadHierarchy(); }
+    else if(a === 'plantas'){ state.view = 'plantas'; state.confirmDelPl = ''; render(); loadPlantas(); }
+    else if(a === 'pl-novo'){
+      state.view = 'plantas-lote'; state.lote = { itens:[] }; state.novo = { folderId:'', listId:'', file:null };
+      if(state.token && !state.folders && !state.hierLoading) loadHierarchy(); else render();
+    }
+    else if(a === 'pl-rm'){ state.lote.itens.splice(parseInt(t.dataset.id, 10), 1); render(); }
+    else if(a === 'pl-enviar'){ enviarPlantas(); }
+    else if(a === 'pl-del'){ state.confirmDelPl = t.dataset.id; render(); }
+    else if(a === 'pl-del-cancel'){ state.confirmDelPl = ''; render(); }
+    else if(a === 'pl-del-ok'){ excluirPlanta(t.dataset.id); }
+    else if(a === 'planta-outra'){ state.novo.outra = true; render(); }
+    else if(a === 'planta-lib'){ state.novo.outra = false; state.novo.file = null; render(); }
     else if(a === 'assinar'){
       var va = cur();
       if(va){ state.cli = { nome:va.cliente_nome || '', cpf:va.cliente_cpf || '', email:va.cliente_email || '', aceite:false }; state.sig = { strokes:[] }; state.view = 'assinar'; render(); }
