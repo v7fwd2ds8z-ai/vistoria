@@ -170,6 +170,17 @@
   .fdet img.th{ width:64px; height:64px; object-fit:cover; border-radius:var(--radius); border:1px solid var(--line); }
   .meta-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:4px 16px; font-size:13px; margin:8px 0 14px; }
   .meta-grid b{ display:block; font-size:11.5px; font-weight:500; color:var(--ink-soft); }
+  .sigbox{ border:1px dashed var(--ink-soft); border-radius:var(--radius); background:#fff; margin-top:6px; }
+  #sigCanvas{ display:block; width:100%; aspect-ratio:3 / 1; touch-action:none; cursor:crosshair; }
+  .termo{ white-space:pre-wrap; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:12px 14px; font-size:13px; line-height:1.55; }
+  .aceite{ display:flex; gap:10px; align-items:flex-start; margin-top:12px; font-size:13.5px; cursor:pointer; }
+  .aceite input{ width:auto; margin-top:3px; flex-shrink:0; }
+  .sgrid{ display:flex; gap:40px; margin-top:34px; page-break-inside:avoid; break-inside:avoid; }
+  .sg{ flex:1; }
+  .sg .box{ height:96px; display:flex; align-items:flex-end; justify-content:center; }
+  .sg .box img{ max-height:90px; max-width:100%; }
+  .sg .ln{ border-top:1px solid var(--ink); padding-top:6px; font-size:12.5px; color:var(--ink-soft); text-align:center; }
+  .assin-info{ font-size:11.5px; color:var(--ink-soft); margin-top:10px; overflow-wrap:anywhere; }
   .rtab{ width:100%; border-collapse:collapse; margin:8px 0 16px; font-size:13px; }
   .rtab th, .rtab td{ border:1px solid var(--line); padding:5px 7px; text-align:left; vertical-align:top; }
   .rtab th{ background:var(--paper-alt); font-weight:600; }
@@ -224,7 +235,8 @@
     currentId:null, zoom:1, sheet:null, confirmDelV:false,
     teams:[], teamId:null, spaces:[], spaceId:null, folders:null, hierError:null, hierLoading:false,
     novo:{ folderId:'', listId:'', file:null }, aba:'', abaFvs:'',
-    fvs:{ modelos:[], inspecoes:[], ready:false, error:null }, fcurId:null, fsheet:null, fnovo:{ modeloId:'', local:'', inspetor:'', data:'' }, fm:null, confirmDelF:false
+    fvs:{ modelos:[], inspecoes:[], ready:false, error:null }, fcurId:null, fsheet:null, fnovo:{ modeloId:'', local:'', inspetor:'', data:'' }, fm:null, confirmDelF:false,
+    cli:{ nome:'', cpf:'', email:'', aceite:false }, sig:{ strokes:[] }
   };
 
   function $(id){ return document.getElementById(id); }
@@ -260,6 +272,7 @@
     var paths = {};
     vistorias.forEach(function(v){
       if(v.planta_path) paths[v.planta_path] = 1;
+      if(v.assinatura_path) paths[v.assinatura_path] = 1;
       (v.defeitos || []).forEach(function(d){ if(d.foto_path) paths[d.foto_path] = 1; });
     });
     var list = Object.keys(paths);
@@ -267,6 +280,7 @@
     var map = {}; list.forEach(function(p,i){ map[p] = urls[i]; });
     vistorias.forEach(function(v){
       v._plantaUrl = v.planta_path ? map[v.planta_path] : '';
+      v._assinaturaUrl = v.assinatura_path ? map[v.assinatura_path] : '';
       (v.defeitos || []).forEach(function(d){ d._fotoUrl = d.foto_path ? map[d.foto_path] : ''; });
     });
   }
@@ -590,6 +604,7 @@
           var prioTxt = d.prioridade || 'Média';
           var desc = '**Vistoria de entrega**\n' +
             '**Local:** ' + v.titulo + '\n' +
+            (v.cliente_nome ? '**Cliente:** ' + v.cliente_nome + '\n' : '') +
             '**Ambiente:** ' + (d.ambiente || 'Não informado') + '\n' +
             '**Ponto:** ' + d.n + ' na planta (planta marcada anexada)\n' +
             '**Prioridade:** ' + prioTxt + '\n\n' +
@@ -649,6 +664,8 @@
     var folder = (state.folders || []).filter(function(f){ return f.id === n.folderId; })[0];
     var list = folder && folder.lists.filter(function(l){ return l.id === n.listId; })[0];
     if(!folder || !list){ toast('Escolha o prédio e a unidade.', true); return; }
+    var er = clienteErro();
+    if(er){ toast(er[1], true); var f0 = $(er[0]); if(f0) f0.focus(); return; }
     if(!n.file){ toast('Envie a planta da unidade.', true); return; }
     try{
       busy('Preparando a planta...');
@@ -663,6 +680,7 @@
       var path = await uploadFile(blob, 'plantas');
       var row = await insertVistoria({
         titulo: folder.name + ' / ' + list.name, predio: folder.name, unidade: list.name, list_id: list.id,
+        cliente_nome: state.cli.nome.trim(), cliente_cpf: fmtCpf(state.cli.cpf), cliente_email: state.cli.email.trim().toLowerCase(),
         planta_path: path, status:'aberta', created_by: state.session.user.email
       });
       row.defeitos = [];
@@ -676,7 +694,7 @@
   function openSheetNew(x, y){ state.sheet = { mode:'novo', x:x, y:y, draft:null }; render(); }
   function openSheetDef(id){
     var v = cur(); var d = v && v.defeitos.filter(function(q){ return q.id === id; })[0]; if(!d) return;
-    state.sheet = { mode: d.task_id ? 'ver' : 'editar', defId:id, x:d.x, y:d.y, draft:null, confirmDel:false }; render();
+    state.sheet = { mode: (d.task_id || v.assinatura_path) ? 'ver' : 'editar', defId:id, x:d.x, y:d.y, draft:null, confirmDel:false }; render();
   }
   async function saveSheet(){
     var v = cur(), s = state.sheet; if(!v || !s) return;
@@ -728,6 +746,122 @@
       state.currentId = null; state.view = 'home'; state.confirmDelV = false; render();
       toast('Vistoria excluída para todo mundo.');
     }catch(e){ toast('Não foi possível excluir: ' + shorten((e && e.message) || 'erro', 120), true); }
+  }
+
+  // ---- cliente e assinatura ----
+  var TERMO_VERSAO = 1;
+  function soDigitos(x){ return String(x || '').replace(/\D/g, ''); }
+  function cpfValido(x){
+    var d = soDigitos(x); if(d.length !== 11 || /^(\d)\1+$/.test(d)) return false;
+    for(var t = 9; t < 11; t++){
+      var sum = 0; for(var i = 0; i < t; i++) sum += parseInt(d.charAt(i), 10) * (t + 1 - i);
+      var dv = (sum * 10) % 11; if(dv === 10) dv = 0;
+      if(dv !== parseInt(d.charAt(t), 10)) return false;
+    }
+    return true;
+  }
+  function fmtCpf(x){ var d = soDigitos(x); return d.length === 11 ? d.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4') : String(x || '').trim(); }
+  function emailValido(x){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(x || '').trim()); }
+  function fmtDataHora(iso){ var d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString('pt-BR') + ' às ' + d.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit', second:'2-digit' }); }
+  function termoTexto(c, n){
+    return 'Eu, ' + c.cliente_nome + ', CPF ' + c.cliente_cpf + ', declaro que acompanhei a vistoria de entrega da unidade ' + c.unidade + ' do empreendimento ' + c.predio +
+      ' e que os defeitos aparentes que constatei estão todos descritos neste relatório, com ' + n + (n === 1 ? ' ponto registrado' : ' pontos registrados') + '.\n\n' +
+      'Os itens listados serão tratados nas condições combinadas com a empresa. Qualquer item que não conste neste relatório e que seja apontado depois será recebido como pedido de assistência técnica, analisado pela empresa conforme as garantias aplicáveis, e não será corrigido sem custo apenas por não ter sido incluído nesta vistoria.\n\n' +
+      'Ficam mantidas as garantias previstas em lei, inclusive para vícios ocultos e para a solidez e a segurança da obra.\n\n' +
+      'Este termo é assinado eletronicamente. As partes reconhecem a assinatura eletrônica como meio válido de comprovação de autoria e integridade (art. 10, § 2º, da MP 2.200-2/2001, e Lei 14.063/2020).';
+  }
+  function termoVista(v){
+    return { cliente_nome: state.cli.nome.trim() || '[nome do cliente]', cliente_cpf: fmtCpf(state.cli.cpf) || '[CPF]', unidade: v.unidade || '', predio: v.predio || '' };
+  }
+  async function sha256Hex(txt){
+    var buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(txt));
+    return Array.prototype.map.call(new Uint8Array(buf), function(b){ return ('0' + b.toString(16)).slice(-2); }).join('');
+  }
+  function clienteFieldsHtml(){
+    var c = state.cli;
+    return '<label class="lbl" for="cNome">Nome completo do cliente</label><input id="cNome" value="' + esc(c.nome) + '" maxlength="160" autocomplete="off">' +
+      '<label class="lbl" for="cCpf">CPF do cliente</label><input id="cCpf" value="' + esc(c.cpf) + '" maxlength="14" inputmode="numeric" autocomplete="off" placeholder="000.000.000-00">' +
+      '<label class="lbl" for="cEmail">E-mail do cliente</label><input id="cEmail" type="email" value="' + esc(c.email) + '" maxlength="160" inputmode="email" autocomplete="off">';
+  }
+  function clienteErro(){
+    var c = state.cli;
+    if(c.nome.trim().length < 3){ return ['cNome', 'Informe o nome completo do cliente.']; }
+    if(!cpfValido(c.cpf)){ return ['cCpf', 'O CPF do cliente não é válido.']; }
+    if(!emailValido(c.email)){ return ['cEmail', 'O e-mail do cliente não é válido.']; }
+    return null;
+  }
+  function sigPontos(){ return state.sig.strokes.reduce(function(n, st){ return n + st.length; }, 0); }
+  function sigDraw(){
+    var c = $('sigCanvas'); if(!c) return;
+    var r = c.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    c.width = Math.max(1, Math.round(r.width * dpr)); c.height = Math.max(1, Math.round(r.height * dpr));
+    var ctx = c.getContext('2d');
+    ctx.lineWidth = 2.4 * dpr; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111';
+    state.sig.strokes.forEach(function(st){
+      ctx.beginPath();
+      st.forEach(function(q, i){ var x = q[0] * c.width, y = q[1] * c.height; if(i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
+      if(st.length === 1) ctx.lineTo(st[0][0] * c.width + 0.1, st[0][1] * c.height);
+      ctx.stroke();
+    });
+  }
+  function sigWire(){
+    var c = $('sigCanvas'); if(!c) return;
+    sigDraw();
+    var atual = null;
+    function pt(e){ var r = c.getBoundingClientRect(); return [Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))]; }
+    c.addEventListener('pointerdown', function(e){ e.preventDefault(); try{ c.setPointerCapture(e.pointerId); }catch(x){} atual = [pt(e)]; state.sig.strokes.push(atual); sigDraw(); });
+    c.addEventListener('pointermove', function(e){ if(!atual) return; e.preventDefault(); atual.push(pt(e)); sigDraw(); });
+    var fim = function(){ atual = null; };
+    c.addEventListener('pointerup', fim); c.addEventListener('pointercancel', fim);
+  }
+  function sigBlob(){
+    var W = 900, H = 300, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    var ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = '#111'; ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    state.sig.strokes.forEach(function(st){
+      ctx.beginPath();
+      st.forEach(function(q, i){ var x = q[0] * W, y = q[1] * H; if(i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
+      if(st.length === 1) ctx.lineTo(st[0][0] * W + 0.1, st[0][1] * H);
+      ctx.stroke();
+    });
+    return canvasToJpeg(cv, 150 * 1024);
+  }
+  function conteudoAssinado(v, cli, termo){
+    var ds = (v.defeitos || []).slice().sort(function(a, b){ return a.n - b.n; });
+    return JSON.stringify({
+      versao: TERMO_VERSAO, vistoria: v.id, titulo: v.titulo, cliente: cli, termo: termo,
+      defeitos: ds.map(function(d){ return { n:d.n, ambiente:d.ambiente, descricao:d.descricao, prioridade:d.prioridade, x:d.x, y:d.y, foto:d.foto_path || null }; })
+    });
+  }
+  async function assinarVistoria(){
+    var v = cur(); if(!v || v.assinatura_path) return;
+    var er = clienteErro();
+    if(er){ toast(er[1], true); var f0 = $(er[0]); if(f0) f0.focus(); return; }
+    if(sigPontos() < 8){ toast('Peça para o cliente assinar no quadro.', true); return; }
+    if(!state.cli.aceite){ toast('O cliente precisa marcar que leu e concorda com o termo.', true); return; }
+    var btn = $('sigOk'); if(btn) btn.disabled = true;
+    try{
+      busy('Registrando a assinatura...');
+      var cli = { nome: state.cli.nome.trim(), cpf: fmtCpf(state.cli.cpf), email: state.cli.email.trim().toLowerCase() };
+      var termo = termoTexto({ cliente_nome:cli.nome, cliente_cpf:cli.cpf, unidade:v.unidade || '', predio:v.predio || '' }, (v.defeitos || []).length);
+      var hash = await sha256Hex(conteudoAssinado(v, cli, termo));
+      var blob = await sigBlob();
+      var path = await uploadFile(blob, 'assinaturas');
+      var info = {
+        versao_termo: TERMO_VERSAO, aparelho: navigator.userAgent, idioma: navigator.language,
+        fuso: (window.Intl && Intl.DateTimeFormat().resolvedOptions().timeZone) || '', tela: screen.width + 'x' + screen.height,
+        hora_do_aparelho: new Date().toISOString(), colhida_por: state.session.user.email
+      };
+      var patch = { cliente_nome:cli.nome, cliente_cpf:cli.cpf, cliente_email:cli.email, termo:termo, assinatura_path:path, assinatura_hash:hash, assinatura_info:info };
+      await updateVistoria(v.id, patch);
+      Object.assign(v, patch);
+      v._assinaturaUrl = await resolveUrl(path);
+      var rr = await supabase.from('vistorias').select('assinado_em').eq('id', v.id).single();
+      v.assinado_em = (rr.data && rr.data.assinado_em) || new Date().toISOString();
+      state.sig = { strokes:[] };
+      state.view = 'relatorio'; busy(null); render();
+      toast('Assinatura registrada.');
+    }catch(e){ busy(null); if(btn) btn.disabled = false; toast('Não foi possível registrar a assinatura: ' + shorten((e && e.message) || 'erro', 140), true); }
   }
 
   // ---- FVS (ficha de verificação de serviço) ----
@@ -1075,7 +1209,7 @@
       var ds = v.defeitos || [], done = ds.filter(isComplete).length;
       var chip = v.status === 'finalizada' ? '<span class="chip green">Enviada</span>' : (ds.length ? '<span class="chip amber">Em andamento</span>' : '<span class="chip">Nova</span>');
       return '<div class="card ' + (v.status === 'finalizada' ? 'done' : '') + '" data-act="abrir" data-id="' + esc(v.id) + '">' +
-        '<div><div class="t">' + esc(v.titulo) + '</div><div class="m">' + ds.length + (ds.length === 1 ? ' defeito' : ' defeitos') + ', ' + done + ' no ClickUp, criada em ' + fmtDate(v.created_at) + '</div></div>' + chip + '</div>';
+        '<div><div class="t">' + esc(v.titulo) + '</div><div class="m">' + (v.cliente_nome ? esc(v.cliente_nome) + ', ' : '') + ds.length + (ds.length === 1 ? ' defeito' : ' defeitos') + ', ' + done + ' no ClickUp, criada em ' + fmtDate(v.created_at) + (v.assinatura_path ? ', assinada' : '') + '</div></div>' + chip + '</div>';
     }).join('') + '</div>';
     return h;
   }
@@ -1132,6 +1266,7 @@
     var hs = hierState('uma vistoria');
     h += hs.html;
     if(!hs.ok) return h;
+    h += clienteFieldsHtml();
     h += '<label class="lbl">Planta da unidade (PDF ou imagem)</label><input type="file" id="nFile" accept="application/pdf,image/*">' +
       (n.file ? '<div class="sub" style="margin-top:6px">Arquivo: ' + esc(n.file.name) + '</div>' : '') +
       '<div class="sub" style="margin-top:6px">Em PDF com várias páginas, uso a primeira.</div>';
@@ -1150,9 +1285,11 @@
     var ds = (v.defeitos || []).slice().sort(function(a,b){ return a.n - b.n; });
     var pend = ds.filter(function(d){ return !isComplete(d); }).length;
     var h = userBar() + '<button class="link back" data-act="home">Voltar</button>' +
-      '<div class="top"><div><h1>' + esc(v.titulo) + '</h1><div class="sub">' + ds.length + (ds.length === 1 ? ' defeito marcado' : ' defeitos marcados') + ', criada em ' + fmtDate(v.created_at) + '</div></div>' +
-      '<button class="btn secondary small" data-act="relatorio">Relatório para o cliente</button></div>';
-    h += '<div class="toolbar"><span class="hint">Toque na planta para marcar um defeito. Toque num número para abrir.</span>' +
+      '<div class="top"><div><h1>' + esc(v.titulo) + '</h1><div class="sub">' + ds.length + (ds.length === 1 ? ' defeito marcado' : ' defeitos marcados') + ', criada em ' + fmtDate(v.created_at) + '</div>' +
+      (v.cliente_nome ? '<div class="sub">Cliente: ' + esc(v.cliente_nome) + (v.assinatura_path ? ', assinada em ' + fmtDate(v.assinado_em) : '') + '</div>' : '') + '</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn secondary small" data-act="relatorio">Relatório para o cliente</button>' +
+      (v.assinatura_path ? '' : '<button class="btn small" data-act="assinar">Colher assinatura</button>') + '</div></div>';
+    h += '<div class="toolbar"><span class="hint">' + (v.assinatura_path ? 'Vistoria assinada: os pontos não podem mais ser alterados.' : 'Toque na planta para marcar um defeito. Toque num número para abrir.') + '</span>' +
       '<button class="btn secondary zoombtn" data-act="zoom-" aria-label="Diminuir">−</button>' +
       '<button class="btn secondary zoombtn" data-act="zoom+" aria-label="Aumentar">+</button></div>';
     h += '<div id="planScroll"><div id="planWrap" style="width:' + (state.zoom*100) + '%"><img id="planImg" src="' + esc(v._plantaUrl || '') + '" alt="Planta" draggable="false" crossorigin="anonymous">' + pinsHtml(v) + '</div></div>';
@@ -1167,7 +1304,7 @@
         (d.erro ? '<div class="sub" style="color:var(--orange);margin-top:4px">' + esc(d.erro) + '</div>' : '') + '</div>' +
         (d.foto_path ? '<img class="th" src="' + esc(d._fotoUrl || '') + '" alt="Foto do ponto ' + d.n + '" data-act="pin" data-id="' + esc(d.id) + '">' : '') + '</div>';
     }).join('');
-    h += '<div class="zone no-print">' + (state.confirmDelV
+    h += '<div class="zone no-print">' + (v.assinatura_path && !isAdmin() ? 'Vistoria assinada: só um administrador pode excluí-la.' : state.confirmDelV
       ? 'Excluir esta vistoria para todo mundo? Os pontos já enviados ao ClickUp continuam lá. <button class="link danger" data-act="excluir-v-ok">Confirmar exclusão</button> <button class="link" data-act="excluir-v-cancel">Cancelar</button>'
       : '<button class="link danger" data-act="excluir-v">Excluir esta vistoria</button>') + '</div>';
     h += '<div class="actions no-print">' + (state.token
@@ -1179,8 +1316,11 @@
   function viewRelatorio(){
     var v = cur(); if(!v) return '';
     var ds = (v.defeitos || []).slice().sort(function(a,b){ return a.n - b.n; });
-    var h = '<div class="no-print" style="display:flex;justify-content:space-between;gap:10px;margin-bottom:14px"><button class="link" data-act="voltar-v">Voltar</button><button class="btn small" data-act="imprimir">Imprimir ou salvar em PDF</button></div>';
+    var h = '<div class="no-print" style="display:flex;justify-content:space-between;gap:10px;margin-bottom:14px"><button class="link" data-act="voltar-v">Voltar</button><span style="display:flex;gap:8px">' +
+      (v.assinatura_path ? '' : '<button class="btn secondary small" data-act="assinar">Colher assinatura</button>') +
+      '<button class="btn small" data-act="imprimir">Imprimir ou salvar em PDF</button></span></div>';
     h += '<div class="report"><h1>Vistoria de entrega</h1><div class="meta">' + esc(v.titulo) + ', ' + fmtDate(v.created_at) + '. ' + ds.length + (ds.length === 1 ? ' ponto registrado.' : ' pontos registrados.') + '</div>';
+    if(v.cliente_nome) h += '<div class="meta-grid"><div><b>Cliente</b>' + esc(v.cliente_nome) + '</div><div><b>CPF</b>' + esc(v.cliente_cpf || '') + '</div><div><b>E-mail</b>' + esc(v.cliente_email || '') + '</div></div>';
     h += '<div class="planbox"><img src="' + esc(v._plantaUrl || '') + '" alt="Planta" crossorigin="anonymous">' + ds.map(function(d){
       return '<span class="pin p-' + esc(d.prioridade) + '" style="left:' + (d.x*100) + '%;top:' + (d.y*100) + '%">' + d.n + '</span>';
     }).join('') + '</div>';
@@ -1188,7 +1328,35 @@
       return '<div class="rdef">' + (d.foto_path ? '<img src="' + esc(d._fotoUrl || '') + '" alt="Foto do ponto ' + d.n + '">' : '') +
         '<div><div><strong>Ponto ' + d.n + '</strong>, ' + esc(d.ambiente || 'Sem ambiente') + ' (prioridade ' + esc(d.prioridade.toLowerCase()) + ')</div><div style="white-space:pre-wrap">' + esc(d.descricao) + '</div></div></div>';
     }).join('');
-    h += '<div class="sign"><div>Cliente</div><div>Responsável pela entrega</div></div></div>';
+    if(v.cliente_nome){
+      var termo = v.termo || termoTexto({ cliente_nome:v.cliente_nome, cliente_cpf:v.cliente_cpf || '', unidade:v.unidade || '', predio:v.predio || '' }, ds.length);
+      h += '<h2 class="sec">Termo de vistoria e aceite</h2><div class="termo">' + esc(termo) + '</div>';
+      h += '<div class="sgrid"><div class="sg"><div class="box">' + (v.assinatura_path ? '<img src="' + esc(v._assinaturaUrl || '') + '" alt="Assinatura do cliente">' : '') + '</div><div class="ln">' + esc(v.cliente_nome) + ', cliente</div></div>' +
+        '<div class="sg"><div class="box"></div><div class="ln">Responsável pela entrega</div></div></div>';
+      if(v.assinatura_path){
+        var inf = v.assinatura_info || {};
+        h += '<div class="assin-info">Assinado eletronicamente por ' + esc(v.cliente_nome) + ', CPF ' + esc(v.cliente_cpf || '') + ', em ' + esc(fmtDataHora(v.assinado_em)) + '. ' +
+          'Código de integridade (SHA-256): ' + esc(v.assinatura_hash || '') + '. Aparelho: ' + esc(shorten(inf.aparelho || '', 120)) + '.</div>';
+      }
+    } else {
+      h += '<div class="sign"><div>Cliente</div><div>Responsável pela entrega</div></div>';
+    }
+    return h + '</div>';
+  }
+
+  function viewAssinar(){
+    var v = cur(); if(!v) return userBar() + '<button class="link back" data-act="voltar-v">Voltar</button><div class="empty"><p>Vistoria não encontrada.</p></div>';
+    var n = (v.defeitos || []).length;
+    var h = userBar() + '<button class="link back" data-act="voltar-v">Voltar</button>' +
+      '<div class="top"><div><h1>Assinatura do cliente</h1><div class="sub">' + esc(v.titulo) + ', ' + n + (n === 1 ? ' ponto registrado' : ' pontos registrados') + '</div></div></div>';
+    if(v.assinatura_path) return h + '<div class="notice ok">Esta vistoria já foi assinada.</div><button class="btn" data-act="relatorio">Ver relatório</button>';
+    h += '<div class="notice">Confira os pontos com o cliente antes de assinar. Depois de assinada, a vistoria não pode mais ser alterada.</div>';
+    h += clienteFieldsHtml();
+    h += '<h2 class="sec">Termo de vistoria e aceite</h2><div class="termo" id="termoPrev">' + esc(termoTexto(termoVista(v), n)) + '</div>';
+    h += '<label class="aceite"><input type="checkbox" id="cAceite"' + (state.cli.aceite ? ' checked' : '') + '><span>Li o termo acima e concordo. Entendo que o que não estiver neste relatório será tratado como assistência técnica, conforme o termo.</span></label>';
+    h += '<h2 class="sec">Assinatura</h2><div class="sub">O cliente assina com o dedo no quadro.</div><div class="sigbox"><canvas id="sigCanvas"></canvas></div>' +
+      '<div style="margin-top:8px"><button class="link" data-act="sig-limpar">Limpar assinatura</button></div>';
+    h += '<div class="actions no-print"><button class="btn blue" id="sigOk" data-act="assinar-ok">Assinar e concluir</button></div>';
     return h;
   }
 
@@ -1365,7 +1533,7 @@
     var title = s.mode === 'novo' ? 'Novo defeito' : (ro ? 'Ponto ' + d.n : 'Editar ponto ' + d.n);
     var fotoSrc = s.draft ? s.draft.url : (d && d._fotoUrl ? d._fotoUrl : '');
     var h = '<div class="sheet" role="dialog" aria-label="' + esc(title) + '"><h2>' + esc(title) + '</h2>';
-    if(ro) h += '<div class="sub">Este ponto já está no ClickUp e não pode mais ser alterado por aqui.</div>';
+    if(ro) h += '<div class="sub">' + (d && d.task_id ? 'Este ponto já está no ClickUp e não pode mais ser alterado por aqui.' : 'Esta vistoria já foi assinada e não pode mais ser alterada.') + '</div>';
     h += '<label class="lbl" for="sAmb">Ambiente</label><input id="sAmb" list="ambList" value="' + esc(d ? d.ambiente : '') + '"' + (ro ? ' disabled' : '') + ' placeholder="Ex: Banheiro da suíte">' +
       '<datalist id="ambList">' + AMBIENTES.map(function(a){ return '<option value="' + esc(a) + '">'; }).join('') + '</datalist>';
     h += '<label class="lbl" for="sDesc">Descrição do defeito</label><textarea id="sDesc"' + (ro ? ' disabled' : '') + ' placeholder="O que está errado e onde">' + esc(d ? d.descricao : '') + '</textarea>';
@@ -1396,6 +1564,7 @@
     else if(state.view === 'fvs-rel') h = viewFvsRel();
     else if(state.view === 'fvs-modelos') h = viewFvsModelos();
     else if(state.view === 'fvs-modelo') h = viewFvsModelo();
+    else if(state.view === 'assinar') h = viewAssinar();
     else if(state.view === 'novo') h = viewNovo();
     else if(state.view === 'vistoria') h = viewVistoria();
     else if(state.view === 'relatorio') h = viewRelatorio();
@@ -1431,6 +1600,13 @@
     if(l) l.addEventListener('change', function(){ state.novo.listId = l.value; });
     var nf = $('nFile');
     if(nf) nf.addEventListener('change', function(){ state.novo.file = nf.files && nf.files[0] || null; render(); });
+    var cn = $('cNome'), cc = $('cCpf'), ce = $('cEmail'), ca = $('cAceite');
+    function termoLive(){ var tp = $('termoPrev'), vv = cur(); if(tp && vv) tp.textContent = termoTexto(termoVista(vv), (vv.defeitos || []).length); }
+    if(cn) cn.addEventListener('input', function(){ state.cli.nome = cn.value; termoLive(); });
+    if(cc) cc.addEventListener('input', function(){ state.cli.cpf = cc.value; termoLive(); });
+    if(ce) ce.addEventListener('input', function(){ state.cli.email = ce.value; });
+    if(ca) ca.addEventListener('change', function(){ state.cli.aceite = ca.checked; });
+    sigWire();
     var fm = $('fModelo');
     if(fm) fm.addEventListener('change', function(){ state.fnovo.modeloId = fm.value; });
     var fl = $('fLocal');
@@ -1487,9 +1663,15 @@
     else if(a === 'recusar'){ t.disabled = true; decidirAcesso(t.dataset.id, 'recusado'); }
     else if(a === 'conectar-clickup'){ location.href = API_BASE + '/auth/start'; }
     else if(a === 'sair-clickup'){ clickUpLogout(''); }
-    else if(a === 'novo'){ state.view = 'novo'; state.novo = { folderId:folderIdDaAba(), listId:'', file:null }; if(state.token && !state.folders && !state.hierLoading) loadHierarchy(); else render(); }
+    else if(a === 'novo'){ state.cli = { nome:'', cpf:'', email:'', aceite:false }; state.view = 'novo'; state.novo = { folderId:folderIdDaAba(), listId:'', file:null }; if(state.token && !state.folders && !state.hierLoading) loadHierarchy(); else render(); }
     else if(a === 'aba'){ state.aba = t.dataset.id; lsSet('vst_aba', state.aba); render(); }
     else if(a === 'reload-h'){ loadHierarchy(); }
+    else if(a === 'assinar'){
+      var va = cur();
+      if(va){ state.cli = { nome:va.cliente_nome || '', cpf:va.cliente_cpf || '', email:va.cliente_email || '', aceite:false }; state.sig = { strokes:[] }; state.view = 'assinar'; render(); }
+    }
+    else if(a === 'sig-limpar'){ state.sig = { strokes:[] }; sigDraw(); }
+    else if(a === 'assinar-ok'){ assinarVistoria(); }
     else if(a === 'menu'){ state.view = 'menu'; state.currentId = null; state.fcurId = null; state.sheet = null; state.fsheet = null; state.confirmDelV = false; state.confirmDelF = false; render(); loadAll(); loadFvs(); }
     else if(a === 'fvs'){ state.view = 'fvs'; state.fcurId = null; state.fsheet = null; state.confirmDelF = false; render(); loadFvs(); }
     else if(a === 'aba-fvs'){ state.abaFvs = t.dataset.id; lsSet('vst_aba_fvs', state.abaFvs); render(); }
@@ -1552,6 +1734,7 @@
   document.addEventListener('pointerup', function(e){
     if(!down) return; var d0 = down; down = null;
     if(state.view !== 'vistoria' || state.sheet) return;
+    var vs = cur(); if(vs && vs.assinatura_path) return;
     if(Math.hypot(e.clientX - d0.x, e.clientY - d0.y) > 8 || Date.now() - d0.t > 600) return;
     var img = $('planImg'); if(!img) return;
     var r = img.getBoundingClientRect();
