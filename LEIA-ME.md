@@ -37,6 +37,19 @@ A ordem importa: se o cadastro for aberto antes das regras novas, qualquer pesso
 
 Para tornar outra pessoa admin, rode `update public.usuarios set admin = true where email = '...';`.
 
+## Assinatura do cliente na vistoria
+
+Ao criar a vistoria o app pede **nome, CPF e e-mail do cliente**. Na vistoria, o botão **Colher assinatura** abre uma tela com o termo de vistoria e aceite (o que não estiver no relatório é tratado como assistência técnica, mantidas as garantias legais), uma caixa "li e concordo" e um quadro para o cliente assinar com o dedo. O relatório sai com o termo, a assinatura e as provas.
+
+- **Provas guardadas:** nome, CPF, e-mail, o texto exato do termo, a imagem da assinatura, um código de integridade (SHA-256 do conteúdo), a data e hora do **servidor**, o aparelho, o fuso e quem colheu a assinatura.
+- **Depois de assinada**, a vistoria fica congelada: ninguém altera os pontos, os dados do cliente, a unidade nem a planta, e só um admin exclui. O envio ao ClickUp continua funcionando.
+- **Validade:** é assinatura eletrônica simples (Lei 14.063/2020 e MP 2.200-2/2001), aceita entre particulares que concordam com o meio, mas com força de prova menor que D4Sign ou gov.br. Para entregas de maior valor, assine também o PDF no D4Sign. Mostre o texto do termo (`termoTexto()` em `index.html`) a um advogado antes de usar.
+- **Entrega ao cliente:** abra o **Relatório**, use "Imprimir ou salvar em PDF" e envie o PDF por e-mail ou WhatsApp.
+
+### Ativar (uma vez)
+
+No **SQL Editor** do Supabase, rode [`supabase/assinatura.sql`](supabase/assinatura.sql) **antes** de publicar a versão do app com esses campos. Sem ele, criar vistoria dá erro, porque as colunas do cliente ainda não existem.
+
 ## FVS (ficha de verificação de serviço)
 
 Além da vistoria de entrega, o app tem o módulo **FVS**, para a conferência de obra no padrão PBQP-H. A tela inicial escolhe entre "Vistoria de entrega" e "FVS".

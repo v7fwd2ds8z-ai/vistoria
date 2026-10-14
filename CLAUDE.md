@@ -38,6 +38,14 @@ Uma IIFE com JS no estilo ES5 (`var`, `function`, concatenação de strings) mai
 - **Seleção da hierarquia do ClickUp**: workspace (team) → espaço (prefere o salvo em `vst_space` ou um cujo nome combine com "pós-obra") → pasta = **prédio** → lista = **unidade**. As tasks são criadas na lista (`v.list_id`).
 - **Relatório** (`viewRelatorio`) é uma view otimizada para impressão (`@media print`, `.no-print`), com área de assinatura.
 
+## Cliente e assinatura da vistoria
+
+`vistorias` tem `cliente_nome/cpf/email` (pedidos em `viewNovo` e validados por `clienteErro()`/`cpfValido()`), `termo`, `assinatura_path`, `assinatura_hash`, `assinatura_info` e `assinado_em` (ver `supabase/assinatura.sql`). Estado do formulário em `state.cli`, traços da assinatura em `state.sig.strokes` (coordenadas normalizadas 0-1, redesenhadas a cada `render()` por `sigWire()`).
+
+- **Fluxo**: botão "Colher assinatura" → `state.view = 'assinar'` (`viewAssinar`) → `assinarVistoria()` monta o texto com `termoTexto()`, calcula o SHA-256 de `conteudoAssinado()` (id, título, cliente, termo e defeitos), sobe a assinatura (JPEG, prefixo `assinaturas/`) e grava tudo; depois abre o relatório. O hash dá para recalcular depois porque tudo que entra nele fica congelado.
+- **Congelamento no banco, não no front**: triggers `vistorias_assinatura_guard` e `defeitos_assinatura_guard` impedem mudar cliente, termo, assinatura, unidade, planta e o conteúdo dos defeitos (e incluir/excluir defeitos) depois de assinada, e só admin exclui. `assinado_em` é preenchido pelo servidor. As marcas de envio ao ClickUp (`task_id`, `foto_ok`, `planta_ok`, `erro`) continuam graváveis. No front, `openSheetDef` abre em modo `ver` e o toque na planta é ignorado quando `v.assinatura_path` existe.
+- Se mudar o texto do termo, incremente `TERMO_VERSAO`: o texto assinado fica guardado em `vistorias.termo`, então assinaturas antigas não mudam.
+
 ## Módulo FVS (ficha de verificação de serviço)
 
 Segundo fluxo do app, ao lado da vistoria. Tela inicial `state.view = 'menu'` escolhe entre `home` (vistorias) e `fvs`; views do módulo: `fvs`, `fvs-novo`, `fvs-insp`, `fvs-rel`, `fvs-modelos` (admin), `fvs-modelo`. Setup em `supabase/fvs.sql` (tabelas + RLS + seed dos 31 modelos).
