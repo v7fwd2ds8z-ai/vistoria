@@ -38,6 +38,13 @@ Uma IIFE com JS no estilo ES5 (`var`, `function`, concatenação de strings) mai
 - **Seleção da hierarquia do ClickUp**: workspace (team) → espaço (prefere o salvo em `vst_space` ou um cujo nome combine com "pós-obra") → pasta = **prédio** → lista = **unidade**. As tasks são criadas na lista (`v.list_id`).
 - **Relatório** (`viewRelatorio`) é uma view otimizada para impressão (`@media print`, `.no-print`), com área de assinatura.
 
+## Biblioteca de plantas
+
+Tabela `plantas` (`predio`, `unidade`, `planta_path`, único por par; `supabase/plantas.sql`; leitura para aprovados, escrita só admin). Os nomes são os da pasta e da lista do ClickUp, comparados por `norm()` (trim + minúsculas) em `plantaDe()`. `loadPlantas()` é chamada ao entrar, ao abrir a biblioteca e ao abrir "Nova vistoria"; falha sem derrubar o resto (`state.plantasError`).
+
+- **Admin**: views `plantas` (lista, exclui) e `plantas-lote` (escolhe a pasta pelo `nFolder` de `hierState(what, true)`, que esconde o seletor de unidade; vários arquivos em `state.lote.itens`; `enviarPlantas()` converte (PDF→JPEG ou compressão), sobe em `plantas/` e faz `upsert` por `predio,unidade`). Itens que falham continuam na lista.
+- **Uso**: `viewNovo` mostra a planta cadastrada quando `plantaDe(pasta, lista)` existe e `state.novo.outra` é falso; `createVistoria` então reaproveita o `planta_path` em vez de subir arquivo. A vistoria guarda só o caminho, e os arquivos nunca são sobrescritos (nome aleatório), então trocar a planta na biblioteca não altera vistorias antigas.
+
 ## Cliente e assinatura da vistoria
 
 `vistorias` tem `cliente_nome/cpf/email` (pedidos em `viewNovo` e validados por `clienteErro()`/`cpfValido()`), `termo`, `assinatura_path`, `assinatura_hash`, `assinatura_info` e `assinado_em` (ver `supabase/assinatura.sql`). Estado do formulário em `state.cli`, traços da assinatura em `state.sig.strokes` (coordenadas normalizadas 0-1, redesenhadas a cada `render()` por `sigWire()`).
