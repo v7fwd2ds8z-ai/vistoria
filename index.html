@@ -229,6 +229,7 @@
   var state = {
     view:'menu', session:null, authChecked:false,
     authEmail:'', authSent:false, authBusy:false, authError:'',
+    authMode:'entrar', authNome:'', authSenha:'', authSenha2:'', authMsg:'', recovery:false, senhaErro:'',
     token:null, user:null, cuError:'',
     sessionUid:null, perfil:null, perfilChecked:false, perfilError:null, pedidos:[],
     vistorias:[], dataReady:false, dataError:null,
@@ -463,7 +464,7 @@
   }
   function endSession(){
     stopRealtime(); unwatchAcesso();
-    state.sessionUid = null; state.perfil = null; state.perfilChecked = false; state.perfilError = null; state.pedidos = [];
+    state.sessionUid = null; state.perfil = null; state.perfilChecked = false; state.perfilError = null; state.pedidos = []; state.recovery = false;
     state.vistorias = []; state.dataReady = false; state.view = 'menu'; state.currentId = null; state.sheet = null;
     resetFvs(); state.plantas = []; state.plantasReady = false;
   }
@@ -1188,6 +1189,79 @@
     }catch(e){ btn.disabled = false; toast('Não foi possível salvar: ' + shorten((e && e.message) || 'erro', 140), true); }
   }
 
+  // ---- login por e-mail e senha ----
+  var SENHA_MIN = 8;
+  function authErroTexto(e){
+    var m = (e && e.message) || '';
+    if(/invalid login credentials/i.test(m)) return 'E-mail ou senha incorretos.';
+    if(/email not confirmed/i.test(m)) return 'Confirme seu e-mail pelo link que enviamos antes de entrar.';
+    if(/already (been )?registered/i.test(m)) return 'Esse e-mail já tem conta. Use Entrar ou "Esqueci minha senha".';
+    if(/rate limit|too many|after \d+ seconds/i.test(m)) return 'Muitas tentativas. Espere um pouco e tente de novo.';
+    if(/not.*allow|disabled|signup/i.test(m)) return 'O cadastro de novos e-mails está desativado. Peça para quem administra o sistema liberar seu acesso.';
+    if(/password/i.test(m)) return 'Senha recusada: ' + m;
+    return 'Não deu certo: ' + (m || 'erro');
+  }
+  function authSubmit(){
+    ['authEmail', 'authNome', 'authSenha', 'authSenha2'].forEach(function(id){ var el = $(id); if(el) state[id] = el.value; });
+    var m = state.authMode;
+    if(m === 'entrar') entrarSenha();
+    else if(m === 'criar') criarConta();
+    else if(m === 'esqueci') esqueciSenha();
+    else sendMagicLink();
+  }
+  async function entrarSenha(){
+    var email = state.authEmail.trim(), senha = state.authSenha;
+    if(!email || !senha){ toast('Informe e-mail e senha.', true); return; }
+    state.authBusy = true; state.authError = ''; render();
+    try{
+      var r = await supabase.auth.signInWithPassword({ email: email, password: senha });
+      if(r.error) throw r.error;
+      state.authSenha = '';
+    }catch(e){ state.authError = authErroTexto(e); }
+    state.authBusy = false; render();
+  }
+  async function criarConta(){
+    var nome = state.authNome.trim(), email = state.authEmail.trim(), senha = state.authSenha;
+    if(nome.length < 3){ toast('Informe seu nome completo.', true); return; }
+    if(!emailValido(email)){ toast('Informe um e-mail válido.', true); return; }
+    if(senha.length < SENHA_MIN){ toast('A senha precisa ter ao menos ' + SENHA_MIN + ' caracteres.', true); return; }
+    if(senha !== state.authSenha2){ toast('As senhas não são iguais.', true); return; }
+    state.authBusy = true; state.authError = ''; render();
+    try{
+      var r = await supabase.auth.signUp({ email: email, password: senha, options: { emailRedirectTo: location.origin + location.pathname, data: { nome: nome } } });
+      if(r.error) throw r.error;
+      if(!r.data || !r.data.session){
+        state.authSent = true; state.authMode = 'entrar'; state.authSenha = ''; state.authSenha2 = '';
+        state.authMsg = 'Se esse e-mail ainda não tem conta, enviamos um link de confirmação para ' + email + '. Toque nele e depois entre com e-mail e senha. Se já tem conta, use Entrar ou "Esqueci minha senha".';
+      }
+    }catch(e){ state.authError = authErroTexto(e); }
+    state.authBusy = false; render();
+  }
+  async function esqueciSenha(){
+    var email = state.authEmail.trim();
+    if(!emailValido(email)){ toast('Informe seu e-mail.', true); return; }
+    state.authBusy = true; state.authError = ''; render();
+    try{
+      var r = await supabase.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+      if(r.error) throw r.error;
+      state.authSent = true; state.authMode = 'entrar';
+      state.authMsg = 'Se esse e-mail tem conta, enviamos um link para criar uma nova senha. Toque nele e escolha a senha.';
+    }catch(e){ state.authError = authErroTexto(e); }
+    state.authBusy = false; render();
+  }
+  async function salvarSenha(){
+    var a = $('sNova').value, b = $('sNova2').value;
+    if(a.length < SENHA_MIN){ state.senhaErro = 'A senha precisa ter ao menos ' + SENHA_MIN + ' caracteres.'; render(); return; }
+    if(a !== b){ state.senhaErro = 'As senhas não são iguais.'; render(); return; }
+    var btn = $('sSalvar'); if(btn) btn.disabled = true;
+    try{
+      var r = await supabase.auth.updateUser({ password: a });
+      if(r.error) throw r.error;
+      state.senhaErro = ''; state.recovery = false; state.view = 'menu'; render();
+      toast('Senha salva. Já dá para entrar em qualquer aparelho com e-mail e senha.');
+    }catch(e){ state.senhaErro = authErroTexto(e); render(); }
+  }
+
   async function sendMagicLink(){
     var email = $('authEmail').value.trim();
     var nome = $('authNome') ? $('authNome').value.trim() : '';
@@ -1196,7 +1270,7 @@
     try{
       var r = await supabase.auth.signInWithOtp({ email: email, options: { emailRedirectTo: location.origin + location.pathname, shouldCreateUser: true, data: nome ? { nome: nome } : undefined } });
       if(r.error) throw r.error;
-      state.authSent = true;
+      state.authSent = true; state.authMsg = 'Link enviado. Confira seu e-mail e toque nele para entrar.';
     }catch(e){
       state.authError = /not.*allow|disabled|signup/i.test((e && e.message) || '')
         ? 'O cadastro de novos e-mails está desativado. Peça para quem administra o sistema liberar seu acesso.'
@@ -1219,21 +1293,49 @@
       : '<span>ClickUp não conectado <button class="link" data-act="conectar-clickup">Conectar</button></span>';
     var n = pendentes().length;
     var adm = isAdmin() ? ' <button class="link" data-act="acessos">Acessos</button>' + (n ? '<span class="chip orange">' + n + '</span>' : '') : '';
-    return '<div class="userbar no-print"><span>' + esc(email) + ' <button class="link" data-act="sair-supa">Sair</button>' + adm + '</span>' + cuPart + '</div>';
+    return '<div class="userbar no-print"><span>' + esc(email) + ' <button class="link" data-act="sair-supa">Sair</button> <button class="link" data-act="senha">Alterar senha</button>' + adm + '</span>' + cuPart + '</div>';
   }
 
+  function loginField(id, label, type, val, auto, extra){
+    return '<label class="lbl" for="' + id + '">' + label + '</label><input id="' + id + '" type="' + type + '" value="' + esc(val) + '" autocomplete="' + auto + '" ' + (extra || '') + ' style="max-width:320px;margin:0 auto">';
+  }
   function viewSupaLogin(){
     var h = '<div class="top"><div><h1>Vistoria de entrega</h1><div class="sub">Marque os defeitos na planta e envie ao ClickUp</div></div></div>';
     if(!SUPA_OK) h += '<div class="notice err">Falta configurar SUPABASE_URL e SUPABASE_ANON_KEY no início do arquivo index.html. Veja o LEIA-ME.</div>';
     if(state.authError) h += '<div class="notice err">' + esc(state.authError) + '</div>';
-    if(state.authSent){
-      h += '<div class="notice ok">Link enviado. Confira seu e-mail e toque nele para entrar.</div>';
+    if(state.authSent) h += '<div class="notice ok">' + esc(state.authMsg || 'Link enviado. Confira seu e-mail.') + '</div>';
+    var m = state.authMode, dis = (SUPA_OK && !state.authBusy) ? '' : ' disabled';
+    var email = loginField('authEmail', 'E-mail', 'email', state.authEmail, 'email', 'placeholder="voce@exemplo.com"');
+    var troca = function(modo, txt){ return '<button class="link" data-act="auth-modo" data-id="' + modo + '">' + txt + '</button>'; };
+    if(m === 'entrar'){
+      h += '<div class="empty"><p>Entre com seu e-mail e senha.</p>' + email + loginField('authSenha', 'Senha', 'password', state.authSenha, 'current-password') +
+        '<div style="margin-top:14px"><button class="btn" data-act="auth-ok"' + dis + '>' + (state.authBusy ? 'Entrando...' : 'Entrar') + '</button></div>' +
+        '<div style="margin-top:14px;display:flex;gap:16px;justify-content:center;flex-wrap:wrap">' + troca('criar', 'Criar conta') + troca('esqueci', 'Esqueci minha senha') + troca('link', 'Entrar por link no e-mail') + '</div></div>';
+    } else if(m === 'criar'){
+      h += '<div class="empty"><p>Crie sua conta. Depois de entrar, seu pedido vai para aprovação.</p>' + loginField('authNome', 'Seu nome completo', 'text', state.authNome, 'name', 'maxlength="120"') + email +
+        loginField('authSenha', 'Senha (mínimo ' + SENHA_MIN + ' caracteres)', 'password', state.authSenha, 'new-password') + loginField('authSenha2', 'Repita a senha', 'password', state.authSenha2, 'new-password') +
+        '<div style="margin-top:14px"><button class="btn" data-act="auth-ok"' + dis + '>' + (state.authBusy ? 'Criando...' : 'Criar conta') + '</button></div>' +
+        '<div style="margin-top:14px">' + troca('entrar', 'Já tenho conta') + '</div></div>';
+    } else if(m === 'esqueci'){
+      h += '<div class="empty"><p>Informe seu e-mail e enviaremos um link para criar uma nova senha.</p>' + email +
+        '<div style="margin-top:14px"><button class="btn" data-act="auth-ok"' + dis + '>' + (state.authBusy ? 'Enviando...' : 'Enviar link') + '</button></div>' +
+        '<div style="margin-top:14px">' + troca('entrar', 'Voltar') + '</div></div>';
     } else {
-      h += '<div class="empty"><p>Entre com seu e-mail. No primeiro acesso, seu pedido vai para aprovação.</p>' +
-        '<label class="lbl" for="authEmail">E-mail</label><input id="authEmail" type="email" autocomplete="email" placeholder="voce@exemplo.com" style="max-width:320px;margin:0 auto">' +
-        '<label class="lbl" for="authNome">Seu nome (só no primeiro acesso)</label><input id="authNome" type="text" autocomplete="name" maxlength="120" style="max-width:320px;margin:0 auto 14px">' +
-        '<div><button class="btn" data-act="enviar-link"' + (SUPA_OK && !state.authBusy ? '' : ' disabled') + '>' + (state.authBusy ? 'Enviando...' : 'Enviar link de acesso') + '</button></div></div>';
+      h += '<div class="empty"><p>Entre com seu e-mail. No primeiro acesso, seu pedido vai para aprovação.</p>' + email + loginField('authNome', 'Seu nome (só no primeiro acesso)', 'text', state.authNome, 'name', 'maxlength="120"') +
+        '<div style="margin-top:14px"><button class="btn" data-act="auth-ok"' + dis + '>' + (state.authBusy ? 'Enviando...' : 'Enviar link de acesso') + '</button></div>' +
+        '<div style="margin-top:14px">' + troca('entrar', 'Entrar com senha') + '</div></div>';
     }
+    return h;
+  }
+
+  function viewSenha(){
+    var rec = state.recovery;
+    var h = (rec ? '' : userBar() + '<button class="link back" data-act="menu">Voltar</button>') +
+      '<div class="top"><div><h1>' + (rec ? 'Nova senha' : 'Alterar senha') + '</h1><div class="sub">Use ao menos ' + SENHA_MIN + ' caracteres. Com ela você entra em qualquer aparelho, sem esperar e-mail.</div></div></div>';
+    if(state.senhaErro) h += '<div class="notice err">' + esc(state.senhaErro) + '</div>';
+    h += '<label class="lbl" for="sNova">Nova senha</label><input id="sNova" type="password" autocomplete="new-password">' +
+      '<label class="lbl" for="sNova2">Repita a nova senha</label><input id="sNova2" type="password" autocomplete="new-password">' +
+      '<div style="margin-top:20px"><button class="btn" id="sSalvar" data-act="salvar-senha">Salvar senha</button></div>';
     return h;
   }
 
@@ -1691,8 +1793,10 @@
     var h;
     if(!state.authChecked) h = '<div class="empty"><p>Carregando...</p></div>';
     else if(!state.session) h = viewSupaLogin();
+    else if(state.recovery) h = viewSenha();
     else if(!state.perfilChecked) h = '<div class="empty"><p>Carregando...</p></div>';
     else if(!isAprovado()) h = viewAguardando();
+    else if(state.view === 'senha') h = viewSenha();
     else if(state.view === 'acessos') h = viewAcessos();
     else if(state.view === 'menu') h = viewMenu();
     else if(state.view === 'fvs') h = viewFvs();
@@ -1717,10 +1821,16 @@
   }
 
   function wireForms(){
-    var ae = $('authEmail');
-    if(ae) ae.addEventListener('keydown', function(e){ if(e.key === 'Enter') sendMagicLink(); });
-    var an = $('authNome');
-    if(an) an.addEventListener('keydown', function(e){ if(e.key === 'Enter') sendMagicLink(); });
+    [['authEmail', 'authEmail'], ['authNome', 'authNome'], ['authSenha', 'authSenha'], ['authSenha2', 'authSenha2']].forEach(function(pair){
+      var el = $(pair[0]);
+      if(!el) return;
+      el.addEventListener('input', function(){ state[pair[1]] = el.value; });
+      el.addEventListener('keydown', function(e){ if(e.key === 'Enter') authSubmit(); });
+    });
+    ['sNova', 'sNova2'].forEach(function(id){
+      var el = $(id);
+      if(el) el.addEventListener('keydown', function(e){ if(e.key === 'Enter') salvarSenha(); });
+    });
     var t = $('nTeam');
     if(t) t.addEventListener('change', async function(){
       state.teamId = t.value; lsSet('vst_team', t.value); state.hierLoading = true; render();
@@ -1811,6 +1921,10 @@
     var t = e.target.closest('[data-act]'); if(!t) return;
     var a = t.dataset.act;
     if(a === 'enviar-link'){ sendMagicLink(); }
+    else if(a === 'auth-ok'){ authSubmit(); }
+    else if(a === 'auth-modo'){ state.authMode = t.dataset.id; state.authSent = false; state.authError = ''; render(); }
+    else if(a === 'salvar-senha'){ salvarSenha(); }
+    else if(a === 'senha'){ state.senhaErro = ''; state.view = 'senha'; render(); }
     else if(a === 'sair-supa'){ supabaseLogout(); }
     else if(a === 'checar-acesso'){ t.disabled = true; refreshAcesso(); }
     else if(a === 'acessos'){ state.view = 'acessos'; render(); loadPedidos(); }
@@ -1917,11 +2031,12 @@
   if(!SUPA_OK){ state.authChecked = true; render(); }
   else{
     supabase.auth.onAuthStateChange(function(event, session){
+      if(event === 'PASSWORD_RECOVERY') state.recovery = true;
       var had = !!state.session;
       state.session = session;
       state.authChecked = true;
       if(session && !had){
-        state.authSent = false; state.authError = '';
+        state.authSent = false; state.authError = ''; state.authSenha = ''; state.authSenha2 = '';
         startSession();
       } else if(!session && had){
         endSession();

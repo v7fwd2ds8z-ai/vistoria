@@ -21,6 +21,12 @@ No início do `<script>` em `index.html`, preencha:
 
 Use apenas a chave `anon` aqui — nunca a `service_role`, pois este arquivo é público.
 
+## Como entrar
+
+A tela de login tem quatro modos: **Entrar** (e-mail e senha, o padrão), **Criar conta**, **Esqueci minha senha** (manda um link para criar uma nova) e **Entrar por link no e-mail** (o link mágico de antes, que continua existindo). Depois de entrar com um link, a pessoa pode definir uma senha em **Alterar senha** (barra do topo) para não depender de e-mail nos próximos acessos. O e-mail só é usado na criação da conta (se a confirmação estiver ligada), ao esquecer a senha ou no modo link.
+
+No Supabase, em **Authentication → Sign In / Providers → Email**: deixe **Enable Email provider** ligado, defina **Minimum password length** em 8 e escolha **Confirm email**. Desligado, a pessoa entra assim que cria a conta e não gasta e-mail; ligado, ela precisa confirmar por e-mail uma vez. De qualquer forma, quem acabou de criar a conta fica pendente até um admin aprovar em **Acessos**.
+
 ## Dar acesso a alguém
 
 Qualquer pessoa pode pedir acesso pela tela de login: ela informa e-mail e nome, entra pelo link e fica numa tela de "aguardando aprovação". Quem é admin vê um contador de pedidos no topo do app e aprova ou recusa em **Acessos**. A tela da pessoa atualiza sozinha quando o pedido é aprovado.
