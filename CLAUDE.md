@@ -38,6 +38,10 @@ Uma IIFE com JS no estilo ES5 (`var`, `function`, concatenação de strings) mai
 - **Seleção da hierarquia do ClickUp**: workspace (team) → espaço (prefere o salvo em `vst_space` ou um cujo nome combine com "pós-obra") → pasta = **prédio** → lista = **unidade**. As tasks são criadas na lista (`v.list_id`).
 - **Relatório** (`viewRelatorio`) é uma view otimizada para impressão (`@media print`, `.no-print`), com área de assinatura.
 
+## Login
+
+`state.authMode` (`entrar` | `criar` | `esqueci` | `link`) escolhe o formulário de `viewSupaLogin()`; `authSubmit()` lê os campos do DOM (autofill nem sempre dispara `input`) e despacha para `entrarSenha()` (`signInWithPassword`), `criarConta()` (`signUp`, com `data.nome` para o trigger de `usuarios`; se a confirmação de e-mail estiver ligada não vem sessão e o app avisa), `esqueciSenha()` (`resetPasswordForEmail`) ou `sendMagicLink()`. A mensagem de sucesso fica em `state.authMsg`. O link de recuperação dispara `PASSWORD_RECOVERY` no `onAuthStateChange`, que liga `state.recovery` e mostra `viewSenha()` antes da checagem de aprovação; `viewSenha()` também serve a "Alterar senha" (`state.view = 'senha'`). Erros do Supabase são traduzidos em `authErroTexto()`. Senha mínima: `SENHA_MIN` (8), que deve bater com o *Minimum password length* do Supabase.
+
 ## Biblioteca de plantas
 
 Tabela `plantas` (`predio`, `unidade`, `planta_path`, único por par; `supabase/plantas.sql`; leitura para aprovados, escrita só admin). Os nomes são os da pasta e da lista do ClickUp, comparados por `norm()` (trim + minúsculas) em `plantaDe()`. `loadPlantas()` é chamada ao entrar, ao abrir a biblioteca e ao abrir "Nova vistoria"; falha sem derrubar o resto (`state.plantasError`).
