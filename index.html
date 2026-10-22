@@ -223,6 +223,7 @@
   var PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
   var PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   var PRIO_NUM = { 'Alta':2, 'Média':3, 'Baixa':4 };
+  var DISCIPLINAS = ['Pintura','Gesso e massa','Pedreiro e revestimento','Elétrica','Portas e vistas','Esquadrias e janelas','Hidráulica','Serralheria','Limpeza','Outros'];
   var AMBIENTES = ['Sala','Cozinha','Área de serviço','Circulação','Quarto 1','Quarto 2','Suíte','Banheiro social','Banheiro da suíte','Lavabo','Sacada / terraço','Garagem'];
   var SIGNED_URL_TTL = 6 * 3600;
 
@@ -609,13 +610,26 @@
             (v.cliente_nome ? '**Cliente:** ' + v.cliente_nome + '\n' : '') +
             '**Ambiente:** ' + (d.ambiente || 'Não informado') + '\n' +
             '**Ponto:** ' + d.n + ' na planta (planta marcada anexada)\n' +
-            '**Prioridade:** ' + prioTxt + '\n\n' +
+            '**Prioridade:** ' + prioTxt + '\n' +
+            '**Disciplina:** ' + (d.disciplina || 'Não informada') + '\n\n' +
             '**Descrição:**\n' + d.descricao;
-          var res = await cu('list/' + v.list_id + '/task', { method:'POST', json:{
+          var body = {
             name: 'Ponto ' + d.n + ' - ' + (d.ambiente || 'Sem ambiente') + ': ' + shorten(d.descricao, 70),
             markdown_description: desc,
             priority: PRIO_NUM[prioTxt] || 3
-          }});
+          };
+          var res;
+          if(d.disciplina){
+            body.tags = [d.disciplina];
+            try{ res = await cu('list/' + v.list_id + '/task', { method:'POST', json:body }); }
+            catch(e){
+              if(e.code !== 'http' || e.status !== 400) throw e;
+              delete body.tags;
+              res = await cu('list/' + v.list_id + '/task', { method:'POST', json:body });
+            }
+          } else {
+            res = await cu('list/' + v.list_id + '/task', { method:'POST', json:body });
+          }
           if(!res || !res.id) throw { code:'http', message:'O ClickUp não devolveu o ID da task.' };
           d.task_id = res.id; d.task_url = res.url || ('https://app.clickup.com/t/' + res.id);
           await updateDefeito(d.id, { task_id:d.task_id, task_url:d.task_url });
@@ -705,8 +719,9 @@
   }
   async function saveSheet(){
     var v = cur(), s = state.sheet; if(!v || !s) return;
-    var amb = $('sAmb').value.trim(), desc = $('sDesc').value.trim(), prio = $('sPrio').value;
+    var amb = $('sAmb').value.trim(), desc = $('sDesc').value.trim(), prio = $('sPrio').value, disc = $('sDisc').value;
     if(!desc){ toast('Descreva o defeito.', true); $('sDesc').focus(); return; }
+    if(!disc){ toast('Escolha a disciplina.', true); $('sDisc').focus(); return; }
     var btn = $('sSave'); btn.disabled = true;
     try{
       var existing = s.defId ? v.defeitos.filter(function(q){ return q.id === s.defId; })[0] : null;
@@ -716,14 +731,14 @@
         fotoPath = await uploadFile(s.draft.blob, 'fotos'); fotoOk = false;
       }
       if(existing){
-        var patch = { ambiente:amb, descricao:desc, prioridade:prio, foto_path:fotoPath, foto_ok:fotoOk };
+        var patch = { ambiente:amb, descricao:desc, prioridade:prio, disciplina:disc, foto_path:fotoPath, foto_ok:fotoOk };
         await updateDefeito(existing.id, patch);
         Object.assign(existing, patch);
         if(fotoPath) existing._fotoUrl = await resolveUrl(fotoPath);
       } else {
         var n = v.defeitos.reduce(function(m, q){ return Math.max(m, q.n); }, 0) + 1;
         var row = await insertDefeito({
-          vistoria_id: v.id, n:n, x:s.x, y:s.y, ambiente:amb, descricao:desc, prioridade:prio,
+          vistoria_id: v.id, n:n, x:s.x, y:s.y, ambiente:amb, descricao:desc, prioridade:prio, disciplina:disc,
           foto_path: fotoPath, foto_ok:false, planta_ok:false, created_by: state.session.user.email
         });
         if(fotoPath) row._fotoUrl = await resolveUrl(fotoPath);
@@ -1491,7 +1506,7 @@
       var st = d.task_id ? (isComplete(d) ? '<span class="chip green">No ClickUp</span>' : '<span class="chip amber">Anexo pendente</span>') : '<span class="chip">Não enviado</span>';
       return '<div class="def"><div class="n p-' + esc(d.prioridade) + '">' + d.n + '</div>' +
         '<div class="body" data-act="pin" data-id="' + esc(d.id) + '"><div class="amb">' + esc(d.ambiente || 'Sem ambiente') + '</div><div class="desc">' + esc(shorten(d.descricao, 160)) + '</div>' +
-        '<div class="row">' + st + '<span class="chip ' + (d.prioridade === 'Alta' ? 'orange' : '') + '">' + esc(d.prioridade) + '</span>' +
+        '<div class="row">' + st + '<span class="chip ' + (d.prioridade === 'Alta' ? 'orange' : '') + '">' + esc(d.prioridade) + '</span>' + (d.disciplina ? '<span class="chip">' + esc(d.disciplina) + '</span>' : '') +
         (d.task_url ? '<a class="link" href="' + esc(d.task_url) + '" target="_blank" rel="noopener">Abrir no ClickUp</a>' : '') + '</div>' +
         (d.erro ? '<div class="sub" style="color:var(--orange);margin-top:4px">' + esc(d.erro) + '</div>' : '') + '</div>' +
         (d.foto_path ? '<img class="th" src="' + esc(d._fotoUrl || '') + '" alt="Foto do ponto ' + d.n + '" data-act="pin" data-id="' + esc(d.id) + '">' : '') + '</div>';
@@ -1778,6 +1793,7 @@
     h += '<label class="lbl" for="sDesc">Descrição do defeito</label><textarea id="sDesc"' + (ro ? ' disabled' : '') + ' placeholder="O que está errado e onde">' + esc(d ? d.descricao : '') + '</textarea>';
     h += '<label class="lbl" for="sPrio">Prioridade</label><select id="sPrio"' + (ro ? ' disabled' : '') + '>' + ['Alta','Média','Baixa'].map(function(p){
       var sel = d ? d.prioridade === p : p === 'Média'; return '<option' + (sel ? ' selected' : '') + '>' + p + '</option>'; }).join('') + '</select>';
+    h += '<label class="lbl" for="sDisc">Disciplina (quem vai corrigir)</label><select id="sDisc"' + (ro ? ' disabled' : '') + '><option value="">Selecione</option>' + DISCIPLINAS.map(function(x){ return '<option' + (d && d.disciplina === x ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select>';
     h += '<label class="lbl">Foto</label><div class="foto"><img id="fotoPrev" alt="Foto do defeito"' + (fotoSrc ? ' src="' + esc(fotoSrc) + '"' : ' hidden') + '>' +
       (ro ? '' : '<input type="file" id="sFoto" accept="image/*"><div class="sub" style="margin-top:5px">No celular, abre a câmera ou a galeria.</div>') + '</div>';
     h += '<div class="btns">';

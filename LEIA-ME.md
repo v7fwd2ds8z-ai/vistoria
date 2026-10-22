@@ -43,6 +43,14 @@ A ordem importa: se o cadastro for aberto antes das regras novas, qualquer pesso
 
 Para tornar outra pessoa admin, rode `update public.usuarios set admin = true where email = '...';`.
 
+## Disciplina de cada defeito
+
+Ao marcar um defeito na planta, escolha a **disciplina** (pintura, gesso, pedreiro, elétrica, portas, esquadrias, hidráulica, serralheria, limpeza ou outros). Ela vai na descrição da task do ClickUp e como etiqueta, então dá para filtrar as pendências por disciplina no próprio ClickUp. Defeitos antigos não têm disciplina até serem editados.
+
+### Ativar (uma vez)
+
+No **SQL Editor** do Supabase, rode [`supabase/disciplina.sql`](supabase/disciplina.sql) antes de publicar. Sem ele, salvar um defeito dá erro, porque a coluna ainda não existe.
+
 ## Biblioteca de plantas
 
 Admins cadastram as plantas uma vez em **Biblioteca de plantas** (menu inicial): escolhem o prédio, selecionam vários arquivos de uma vez (PDF ou imagem, primeira página) e o nome do arquivo vira o nome da unidade. O app avisa quando o nome não bate com uma lista do ClickUp. Cadastrar de novo a mesma unidade substitui a planta.
