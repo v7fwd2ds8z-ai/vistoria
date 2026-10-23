@@ -224,6 +224,28 @@
   var PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   var PRIO_NUM = { 'Alta':2, 'Média':3, 'Baixa':4 };
   var DISCIPLINAS = ['Pintura','Gesso e massa','Pedreiro e revestimento','Elétrica','Portas e vistas','Esquadrias e janelas','Hidráulica','Serralheria','Limpeza','Outros'];
+  // Palavras que sugerem a disciplina (peso 2 = palavra forte). A ordem desempata.
+  var DISC_PALAVRAS = [
+    ['Pintura', { 'pintur':3, 'repint':4, 'pintar':3, 'pintad':3, 'tinta':2, 'retoque':1, 'demao':1 }],
+    ['Gesso e massa', { 'gesso':2, 'forro':2, 'tabica':2, 'massa':2, 'trinca':2, 'fissura':2, 'reboco':2, 'lixa':1, 'furo':1, 'buraco':1, 'acabamento':1 }],
+    ['Pedreiro e revestimento', { 'rejunte':2, 'piso':1, 'ceramica':2, 'revestimento':2, 'rodape':2, 'cimento':1, 'requadro':2, 'chumbagem':2, 'azulejo':2, 'porcelanato':2, 'pedra':1 }],
+    ['Elétrica', { 'tomada':2, 'espelho':2, 'interruptor':2, 'quadro de luz':2, 'eletric':2, 'disjuntor':2, 'fiacao':2, 'lampada':1, 'luminaria':1 }],
+    ['Portas e vistas', { 'porta':2, 'vista':1, 'macaneta':2, 'fechadura':2, 'batente':2, 'trinco':1 }],
+    ['Esquadrias e janelas', { 'janela':2, 'esquadria':2, 'vidro':1, 'aluminio':1, 'persiana':1 }],
+    ['Hidráulica', { 'vazamento':2, 'vaso':2, 'ralo':2, 'torneira':2, 'pia':1, 'registro':2, 'agua':1, 'hidraul':2, 'acoplada':2, 'sifao':2, 'descarga':2 }],
+    ['Serralheria', { 'guarda corpo':2, 'guarda-corpo':2, 'guardacorpo':2, 'corrimao':2, 'grade':1, 'portao':2, 'serralh':2 }],
+    ['Limpeza', { 'limpeza':5, 'limpar':3, 'sujo':2, 'suja':2, 'sujeira':2, 'poeira':2, 'entulho':2, 'adesivo':1 }]
+  ];
+  function semAcento(t){ return String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+  function sugerirDisciplina(texto){
+    var t = semAcento(texto), melhor = '', max = 0;
+    DISC_PALAVRAS.forEach(function(par){
+      var pontos = 0;
+      Object.keys(par[1]).forEach(function(k){ if(t.indexOf(k) >= 0) pontos += par[1][k]; });
+      if(pontos > max){ max = pontos; melhor = par[0]; }
+    });
+    return melhor;
+  }
   var AMBIENTES = ['Sala','Cozinha','Área de serviço','Circulação','Quarto 1','Quarto 2','Suíte','Banheiro social','Banheiro da suíte','Lavabo','Sacada / terraço','Garagem'];
   var SIGNED_URL_TTL = 6 * 3600;
 
@@ -715,7 +737,7 @@
   function openSheetNew(x, y){ state.sheet = { mode:'novo', x:x, y:y, draft:null }; render(); }
   function openSheetDef(id){
     var v = cur(); var d = v && v.defeitos.filter(function(q){ return q.id === id; })[0]; if(!d) return;
-    state.sheet = { mode: (d.task_id || v.assinatura_path) ? 'ver' : 'editar', defId:id, x:d.x, y:d.y, draft:null, confirmDel:false }; render();
+    state.sheet = { mode: (d.task_id || v.assinatura_path) ? 'ver' : 'editar', defId:id, x:d.x, y:d.y, draft:null, confirmDel:false, discManual:!!d.disciplina }; render();
   }
   async function saveSheet(){
     var v = cur(), s = state.sheet; if(!v || !s) return;
@@ -1793,7 +1815,7 @@
     h += '<label class="lbl" for="sDesc">Descrição do defeito</label><textarea id="sDesc"' + (ro ? ' disabled' : '') + ' placeholder="O que está errado e onde">' + esc(d ? d.descricao : '') + '</textarea>';
     h += '<label class="lbl" for="sPrio">Prioridade</label><select id="sPrio"' + (ro ? ' disabled' : '') + '>' + ['Alta','Média','Baixa'].map(function(p){
       var sel = d ? d.prioridade === p : p === 'Média'; return '<option' + (sel ? ' selected' : '') + '>' + p + '</option>'; }).join('') + '</select>';
-    h += '<label class="lbl" for="sDisc">Disciplina (quem vai corrigir)</label><select id="sDisc"' + (ro ? ' disabled' : '') + '><option value="">Selecione</option>' + DISCIPLINAS.map(function(x){ return '<option' + (d && d.disciplina === x ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select>';
+    h += '<label class="lbl" for="sDisc">Disciplina (quem vai corrigir)</label><select id="sDisc"' + (ro ? ' disabled' : '') + '><option value="">Selecione</option>' + DISCIPLINAS.map(function(x){ return '<option' + (d && d.disciplina === x ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select><div class="sub" id="sDiscHint"></div>';
     h += '<label class="lbl">Foto</label><div class="foto"><img id="fotoPrev" alt="Foto do defeito"' + (fotoSrc ? ' src="' + esc(fotoSrc) + '"' : ' hidden') + '>' +
       (ro ? '' : '<input type="file" id="sFoto" accept="image/*"><div class="sub" style="margin-top:5px">No celular, abre a câmera ou a galeria.</div>') + '</div>';
     h += '<div class="btns">';
@@ -1881,6 +1903,20 @@
     });
     var pp = $('plantaPrev');
     if(pp) resolveUrl(pp.dataset.path).then(function(u){ if(u && $('plantaPrev') === pp) pp.src = u; });
+    var sdisc = $('sDisc');
+    if(sdisc && !sdisc.disabled){
+      var samb = $('sAmb'), sdesc = $('sDesc');
+      var sugerir = function(){
+        if(!state.sheet || state.sheet.discManual) return;
+        var d = sugerirDisciplina((samb ? samb.value : '') + ' ' + (sdesc ? sdesc.value : ''));
+        var hint = $('sDiscHint');
+        if(d){ sdisc.value = d; if(hint) hint.textContent = 'Sugerida pelo texto. Troque se não for essa.'; }
+        else { sdisc.value = ''; if(hint) hint.textContent = ''; }
+      };
+      sdisc.addEventListener('change', function(){ if(state.sheet) state.sheet.discManual = true; var h = $('sDiscHint'); if(h) h.textContent = ''; });
+      if(samb) samb.addEventListener('input', sugerir);
+      if(sdesc) sdesc.addEventListener('input', sugerir);
+    }
     var cn = $('cNome'), cc = $('cCpf'), ce = $('cEmail'), ca = $('cAceite');
     function termoLive(){ var tp = $('termoPrev'), vv = cur(); if(tp && vv) tp.textContent = termoTexto(termoVista(vv), (vv.defeitos || []).length); }
     if(cn) cn.addEventListener('input', function(){ state.cli.nome = cn.value; termoLive(); });
