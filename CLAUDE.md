@@ -53,6 +53,8 @@ Tabela `plantas` (`predio`, `unidade`, `planta_path`, único por par; `supabase/
 
 `defeitos.disciplina` (texto, `supabase/disciplina.sql`) recebe um valor de `DISCIPLINAS` (Pintura, Gesso e massa, Pedreiro e revestimento, Elétrica, Portas e vistas, Esquadrias e janelas, Hidráulica, Serralheria, Limpeza, Outros). O sheet (`sDisc`) exige escolher uma ao salvar; defeitos antigos ficam vazios até serem editados. `sendAll` escreve a disciplina na descrição da task e a manda como etiqueta (`tags`) do ClickUp; se o ClickUp recusar com HTTP 400 (etiqueta), repete a criação sem a etiqueta, então a disciplina sempre fica pelo menos na descrição. A lista tem as mesmas disciplinas dos relatórios por disciplina.
 
+**Sugestão**: enquanto a pessoa digita o ambiente e a descrição, `sugerirDisciplina()` (tabela `DISC_PALAVRAS`, palavras sem acento com peso; empate fica com a primeira da lista) preenche o select e mostra "Sugerida pelo texto" (`sDiscHint`). Assim que a pessoa troca o select à mão (ou o defeito já tem disciplina), `state.sheet.discManual` desliga a sugestão. Acerta cerca de 80% dos pontos reais já vistoriados; ao mexer na tabela, retestar contra pontos reais.
+
 ## Cliente e assinatura da vistoria
 
 `vistorias` tem `cliente_nome/cpf/email` (pedidos em `viewNovo` e validados por `clienteErro()`/`cpfValido()`), `termo`, `assinatura_path`, `assinatura_hash`, `assinatura_info` e `assinado_em` (ver `supabase/assinatura.sql`). Estado do formulário em `state.cli`, traços da assinatura em `state.sig.strokes` (coordenadas normalizadas 0-1, redesenhadas a cada `render()` por `sigWire()`).
