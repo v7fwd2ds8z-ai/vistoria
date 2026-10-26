@@ -259,7 +259,7 @@
     currentId:null, zoom:1, sheet:null, confirmDelV:false,
     teams:[], teamId:null, spaces:[], spaceId:null, folders:null, hierError:null, hierLoading:false,
     novo:{ folderId:'', listId:'', file:null }, aba:'', abaFvs:'',
-    fvs:{ modelos:[], inspecoes:[], ready:false, error:null }, fcurId:null, fsheet:null, fnovo:{ modeloId:'', local:'', inspetor:'', data:'' }, fm:null, confirmDelF:false,
+    fvs:{ modelos:[], inspecoes:[], ready:false, error:null }, fcurId:null, fsheet:null, fnovo:{ modeloId:'', local:'', inspetor:'', data:'' }, fm:null, confirmDelF:false, enviando:false,
     cli:{ nome:'', cpf:'', email:'', aceite:false }, sig:{ strokes:[] },
     plantas:[], plantasReady:false, plantasError:null, lote:{ itens:[] }, confirmDelPl:''
   };
@@ -615,7 +615,14 @@
     if(!out.length) throw { message:'Não encontrei pastas nesse espaço do ClickUp.' };
   }
 
+  // Trava: um segundo toque (ou outra aba de código) durante o envio criaria tasks duplicadas no ClickUp.
   async function sendAll(){
+    if(state.enviando){ toast('Já estou enviando. Aguarde terminar.'); return; }
+    state.enviando = true; render();
+    try{ await sendAllPontos(); }
+    finally{ state.enviando = false; render(); }
+  }
+  async function sendAllPontos(){
     var v = cur(); if(!v) return;
     var list = (v.defeitos || []).filter(function(d){ return !isComplete(d); });
     if(!list.length){ toast('Nada pendente para enviar.'); return; }
@@ -1139,6 +1146,12 @@
     }catch(e){ busy(null); btn.disabled = false; toast('Não foi possível salvar: ' + shorten((e && e.message) || 'erro', 140), true); }
   }
   async function sendFvs(){
+    if(state.enviando){ toast('Já estou enviando. Aguarde terminar.'); return; }
+    state.enviando = true; render();
+    try{ await sendFvsItens(); }
+    finally{ state.enviando = false; render(); }
+  }
+  async function sendFvsItens(){
     var f = curF(); if(!f) return;
     var list = f.itens.filter(fvsPendEnvio);
     if(!list.length){ toast('Nada pendente para enviar.'); return; }
@@ -1537,7 +1550,7 @@
       ? 'Excluir esta vistoria para todo mundo? Os pontos já enviados ao ClickUp continuam lá. <button class="link danger" data-act="excluir-v-ok">Confirmar exclusão</button> <button class="link" data-act="excluir-v-cancel">Cancelar</button>'
       : '<button class="link danger" data-act="excluir-v">Excluir esta vistoria</button>') + '</div>';
     h += '<div class="actions no-print">' + (state.token
-      ? '<button class="btn blue" data-act="enviar"' + (pend ? '' : ' disabled') + '>' + (pend ? 'Enviar ' + pend + (pend === 1 ? ' ponto ao ClickUp' : ' pontos ao ClickUp') : 'Tudo enviado ao ClickUp') + '</button>'
+      ? '<button class="btn blue" data-act="enviar"' + (pend && !state.enviando ? '' : ' disabled') + '>' + (state.enviando ? 'Enviando...' : pend ? 'Enviar ' + pend + (pend === 1 ? ' ponto ao ClickUp' : ' pontos ao ClickUp') : 'Tudo enviado ao ClickUp') + '</button>'
       : '<button class="btn blue" data-act="conectar-clickup">Conectar ClickUp para enviar</button>') + '</div>';
     return h;
   }
@@ -1725,7 +1738,7 @@
       ? 'Excluir esta FVS para todo mundo? As tasks já enviadas ao ClickUp continuam lá. <button class="link danger" data-act="f-excluir-ok">Confirmar exclusão</button> <button class="link" data-act="f-excluir-cancel">Cancelar</button>'
       : '<button class="link danger" data-act="f-excluir">Excluir esta FVS</button>') + '</div>';
     h += '<div class="actions no-print">' + (state.token
-      ? '<button class="btn blue" data-act="f-enviar"' + (pend ? '' : ' disabled') + '>' + (pend ? 'Enviar ' + pend + (pend === 1 ? ' reprovação ao ClickUp' : ' reprovações ao ClickUp') : (c.rep ? 'Reprovações já enviadas ao ClickUp' : 'Nada a enviar ao ClickUp')) + '</button>'
+      ? '<button class="btn blue" data-act="f-enviar"' + (pend && !state.enviando ? '' : ' disabled') + '>' + (state.enviando ? 'Enviando...' : pend ? 'Enviar ' + pend + (pend === 1 ? ' reprovação ao ClickUp' : ' reprovações ao ClickUp') : (c.rep ? 'Reprovações já enviadas ao ClickUp' : 'Nada a enviar ao ClickUp')) + '</button>'
       : '<button class="btn blue" data-act="conectar-clickup">Conectar ClickUp para enviar</button>') + '</div>';
     return h;
   }
