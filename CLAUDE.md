@@ -55,6 +55,8 @@ Tabela `plantas` (`predio`, `unidade`, `planta_path`, único por par; `supabase/
 
 **Sugestão**: enquanto a pessoa digita o ambiente e a descrição, `sugerirDisciplina()` (tabela `DISC_PALAVRAS`, palavras sem acento com peso; empate fica com a primeira da lista) preenche o select e mostra "Sugerida pelo texto" (`sDiscHint`). Assim que a pessoa troca o select à mão (ou o defeito já tem disciplina), `state.sheet.discManual` desliga a sugestão. Acerta cerca de 80% dos pontos reais já vistoriados; ao mexer na tabela, retestar contra pontos reais.
 
+**Relatório por disciplina** (`viewRelDisc`, `state.view = 'rel-disc'`, só admin, card no menu): escolhe a disciplina e, opcionalmente, o empreendimento; lista por unidade todos os pontos daquela disciplina com foto e posição na planta (miniatura com o pino), pronto para imprimir/salvar em PDF. Lê de `state.vistorias` (já com signed URLs), então não depende do ClickUp. Ponto sem `disciplina` entra pela `sugerirDisciplina()` (marcado "sugerida"); sem disciplina e sem sugestão fica de fora, com aviso.
+
 ## Cliente e assinatura da vistoria
 
 `vistorias` tem `cliente_nome/cpf/email` (pedidos em `viewNovo` e validados por `clienteErro()`/`cpfValido()`), `termo`, `assinatura_path`, `assinatura_hash`, `assinatura_info` e `assinado_em` (ver `supabase/assinatura.sql`). Estado do formulário em `state.cli`, traços da assinatura em `state.sig.strokes` (coordenadas normalizadas 0-1, redesenhadas a cada `render()` por `sigWire()`).

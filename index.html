@@ -186,7 +186,15 @@
   .rtab th{ background:var(--paper-alt); font-weight:600; }
   .rtab .res{ white-space:nowrap; font-weight:600; }
   .rtab tr{ page-break-inside:avoid; break-inside:avoid; }
+  .rd-plan{ position:relative; width:210px; flex-shrink:0; border:1px solid var(--line); align-self:flex-start; }
+  .rd-plan img{ display:block; width:100%; height:auto; }
+  .rd-plan .pin{ width:20px; height:20px; font-size:10px; border-width:1.5px; cursor:default; }
+  .rd-unit{ font-size:15px; margin:18px 0 2px; break-after:avoid; page-break-after:avoid; }
+  .rd-tag{ font-size:11.5px; color:var(--ink-soft); }
+  .rd-sel{ display:flex; gap:10px; flex-wrap:wrap; margin:10px 0 4px; }
+  .rd-sel > div{ flex:1; min-width:180px; }
   @media (max-width:560px){
+    .rd-plan{ width:100%; }
     .rdef{ flex-direction:column; }
     .rdef img{ width:100%; height:auto; max-height:220px; }
   }
@@ -261,7 +269,7 @@
     novo:{ folderId:'', listId:'', file:null }, aba:'', abaFvs:'',
     fvs:{ modelos:[], inspecoes:[], ready:false, error:null }, fcurId:null, fsheet:null, fnovo:{ modeloId:'', local:'', inspetor:'', data:'' }, fm:null, confirmDelF:false, enviando:false,
     cli:{ nome:'', cpf:'', email:'', aceite:false }, sig:{ strokes:[] },
-    plantas:[], plantasReady:false, plantasError:null, lote:{ itens:[] }, confirmDelPl:''
+    rd:{ disc:'Hidráulica', predio:'' }, plantas:[], plantasReady:false, plantasError:null, lote:{ itens:[] }, confirmDelPl:''
   };
 
   function $(id){ return document.getElementById(id); }
@@ -1421,6 +1429,7 @@
       '<div class="card" data-act="home"><div><div class="t">Vistoria de entrega</div><div class="m">Marque defeitos na planta e envie ao ClickUp</div></div>' + (abertas ? '<span class="chip amber">' + abertas + ' em andamento</span>' : '') + '</div>' +
       '<div class="card" data-act="fvs"><div><div class="t">FVS</div><div class="m">Ficha de verificação de serviço (PBQP-H)</div></div>' + (fabertas ? '<span class="chip amber">' + fabertas + ' em andamento</span>' : '') + '</div>' +
       (isAdmin() ? '<div class="card" data-act="plantas"><div><div class="t">Biblioteca de plantas</div><div class="m">Plantas por prédio e unidade, usadas nas vistorias</div></div></div>' : '') +
+      (isAdmin() ? '<div class="card" data-act="rel-disc"><div><div class="t">Relatório por disciplina</div><div class="m">Todos os pontos de uma disciplina, com foto e posição na planta</div></div></div>' : '') +
       (isAdmin() ? '<div class="card" data-act="fvs-modelos"><div><div class="t">Modelos de FVS</div><div class="m">Editar as fichas e seus itens de verificação</div></div></div>' : '') +
       '</div>';
     return h;
@@ -1553,6 +1562,63 @@
       ? '<button class="btn blue" data-act="enviar"' + (pend && !state.enviando ? '' : ' disabled') + '>' + (state.enviando ? 'Enviando...' : pend ? 'Enviar ' + pend + (pend === 1 ? ' ponto ao ClickUp' : ' pontos ao ClickUp') : 'Tudo enviado ao ClickUp') + '</button>'
       : '<button class="btn blue" data-act="conectar-clickup">Conectar ClickUp para enviar</button>') + '</div>';
     return h;
+  }
+
+  function discDoPonto(d){
+    if(d.disciplina) return { nome:d.disciplina, sugerida:false };
+    var sg = sugerirDisciplina((d.ambiente || '') + ' ' + (d.descricao || ''));
+    return sg ? { nome:sg, sugerida:true } : { nome:'', sugerida:false };
+  }
+  function viewRelDisc(){
+    var h = userBar() + '<div class="no-print" style="display:flex;justify-content:space-between;gap:10px;margin-bottom:14px"><button class="link" data-act="menu">Início</button>' +
+      '<button class="btn small" data-act="imprimir">Imprimir ou salvar em PDF</button></div>';
+    if(!isAdmin()) return h + '<div class="empty"><p>Só administradores geram este relatório.</p></div>';
+    if(state.dataError) h += '<div class="notice err">' + esc(state.dataError) + '</div>';
+    if(!state.dataReady) return h + '<div class="empty"><p>Carregando...</p></div>';
+    var prediosMap = {};
+    state.vistorias.forEach(function(v){ prediosMap[v.predio || 'Sem empreendimento'] = 1; });
+    var predios = Object.keys(prediosMap).sort();
+    var rd = state.rd;
+    h += '<div class="rd-sel no-print"><div><label class="lbl" for="rdDisc">Disciplina</label><select id="rdDisc">' +
+      DISCIPLINAS.map(function(x){ return '<option' + (x === rd.disc ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select></div>' +
+      '<div><label class="lbl" for="rdPredio">Empreendimento</label><select id="rdPredio"><option value="">Todos</option>' +
+      predios.map(function(x){ return '<option' + (x === rd.predio ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select></div></div>';
+    var grupos = [], total = 0, sugeridas = 0, semDisc = 0;
+    state.vistorias.forEach(function(v){
+      if(rd.predio && (v.predio || 'Sem empreendimento') !== rd.predio) return;
+      var pts = [];
+      (v.defeitos || []).slice().sort(function(a,b){ return a.n - b.n; }).forEach(function(d){
+        var dp = discDoPonto(d);
+        if(!dp.nome){ semDisc++; return; }
+        if(dp.nome !== rd.disc) return;
+        if(dp.sugerida) sugeridas++;
+        pts.push({ d:d, sugerida:dp.sugerida });
+      });
+      if(pts.length){ grupos.push({ v:v, pts:pts }); total += pts.length; }
+    });
+    grupos.sort(function(a,b){
+      var pa = a.v.predio || '', pb = b.v.predio || '';
+      if(pa !== pb) return pa < pb ? -1 : 1;
+      var ua = a.v.unidade || a.v.titulo || '', ub = b.v.unidade || b.v.titulo || '';
+      return ua < ub ? -1 : (ua > ub ? 1 : 0);
+    });
+    h += '<div class="report"><h1>' + esc(rd.disc) + ': serviços a executar</h1><div class="meta">' + (rd.predio ? esc(rd.predio) + ', ' : '') +
+      total + (total === 1 ? ' ponto' : ' pontos') + ' em ' + grupos.length + (grupos.length === 1 ? ' unidade' : ' unidades') + '. Gerado em ' + fmtDate(new Date().toISOString()) + '.</div>';
+    if(sugeridas) h += '<div class="notice no-print">' + sugeridas + (sugeridas === 1 ? ' ponto antigo não tem' : ' pontos antigos não têm') + ' disciplina gravada e entraram pela sugestão do texto (marcados como "sugerida"). Confira esses.</div>';
+    if(semDisc) h += '<div class="notice no-print">' + semDisc + (semDisc === 1 ? ' ponto sem disciplina e sem sugestão ficou' : ' pontos sem disciplina e sem sugestão ficaram') + ' de fora. Abra o ponto na vistoria e escolha a disciplina para ele entrar aqui.</div>';
+    if(!total) h += '<div class="empty"><p>Nenhum ponto de ' + esc(rd.disc.toLowerCase()) + ' nas vistorias.</p></div>';
+    grupos.forEach(function(g){
+      var v = g.v;
+      h += '<h2 class="rd-unit">' + esc(v.titulo) + (v.cliente_nome ? ' <span class="rd-tag">' + esc(v.cliente_nome) + '</span>' : '') + '</h2>';
+      g.pts.forEach(function(p){
+        var d = p.d;
+        h += '<div class="rdef">' + (d.foto_path ? '<img src="' + esc(d._fotoUrl || '') + '" alt="Foto do ponto ' + d.n + '">' : '') +
+          '<div class="rd-plan"><img src="' + esc(v._plantaUrl || '') + '" alt="Planta" crossorigin="anonymous"><span class="pin p-' + esc(d.prioridade) + '" style="left:' + (d.x*100) + '%;top:' + (d.y*100) + '%">' + d.n + '</span></div>' +
+          '<div><div><strong>Ponto ' + d.n + '</strong>, ' + esc(d.ambiente || 'Sem ambiente') + ' (prioridade ' + esc(String(d.prioridade).toLowerCase()) + ')' + (p.sugerida ? ' <span class="rd-tag">sugerida</span>' : '') + '</div>' +
+          '<div style="white-space:pre-wrap">' + esc(d.descricao) + '</div></div></div>';
+      });
+    });
+    return h + '</div>';
   }
 
   function viewRelatorio(){
@@ -1856,6 +1922,7 @@
     else if(state.view === 'fvs-rel') h = viewFvsRel();
     else if(state.view === 'fvs-modelos') h = viewFvsModelos();
     else if(state.view === 'fvs-modelo') h = viewFvsModelo();
+    else if(state.view === 'rel-disc') h = viewRelDisc();
     else if(state.view === 'assinar') h = viewAssinar();
     else if(state.view === 'plantas') h = viewPlantas();
     else if(state.view === 'plantas-lote') h = viewPlantasLote();
@@ -1882,6 +1949,9 @@
       var el = $(id);
       if(el) el.addEventListener('keydown', function(e){ if(e.key === 'Enter') salvarSenha(); });
     });
+    var rdd = $('rdDisc'), rdp = $('rdPredio');
+    if(rdd) rdd.addEventListener('change', function(){ state.rd.disc = rdd.value; render(); });
+    if(rdp) rdp.addEventListener('change', function(){ state.rd.predio = rdp.value; render(); });
     var t = $('nTeam');
     if(t) t.addEventListener('change', async function(){
       state.teamId = t.value; lsSet('vst_team', t.value); state.hierLoading = true; render();
@@ -2000,6 +2070,7 @@
     else if(a === 'novo'){ loadPlantas(); state.cli = { nome:'', cpf:'', email:'', aceite:false }; state.view = 'novo'; state.novo = { folderId:folderIdDaAba(), listId:'', file:null }; if(state.token && !state.folders && !state.hierLoading) loadHierarchy(); else render(); }
     else if(a === 'aba'){ state.aba = t.dataset.id; lsSet('vst_aba', state.aba); render(); }
     else if(a === 'reload-h'){ loadHierarchy(); }
+    else if(a === 'rel-disc'){ state.view = 'rel-disc'; render(); loadAll(); }
     else if(a === 'plantas'){ state.view = 'plantas'; state.confirmDelPl = ''; render(); loadPlantas(); }
     else if(a === 'pl-novo'){
       state.view = 'plantas-lote'; state.lote = { itens:[] }; state.novo = { folderId:'', listId:'', file:null };
