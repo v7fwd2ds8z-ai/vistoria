@@ -271,7 +271,7 @@
     novo:{ folderId:'', listId:'', file:null }, aba:'', abaFvs:'',
     fvs:{ modelos:[], inspecoes:[], ready:false, error:null }, fcurId:null, fsheet:null, fnovo:{ modeloId:'', local:'', inspetor:'', data:'' }, fm:null, confirmDelF:false, enviando:false,
     cli:{ nome:'', cpf:'', email:'', aceite:false }, sig:{ strokes:[] },
-    rd:{ disc:'Hidráulica', predio:'' }, plantas:[], plantasReady:false, plantasError:null, lote:{ itens:[] }, confirmDelPl:''
+    rd:{ disc:'Hidráulica', predio:'', ov:{} }, plantas:[], plantasReady:false, plantasError:null, lote:{ itens:[] }, confirmDelPl:''
   };
 
   function $(id){ return document.getElementById(id); }
@@ -1585,16 +1585,18 @@
       DISCIPLINAS.map(function(x){ return '<option' + (x === rd.disc ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select></div>' +
       '<div><label class="lbl" for="rdPredio">Empreendimento</label><select id="rdPredio"><option value="">Todos</option>' +
       predios.map(function(x){ return '<option' + (x === rd.predio ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select></div></div>';
-    var grupos = [], total = 0, sugeridas = 0, semDisc = 0;
+    var grupos = [], total = 0, sugeridas = 0, semDisc = 0, fora = [];
     state.vistorias.forEach(function(v){
-      if(rd.predio && (v.predio || 'Sem empreendimento') !== rd.predio) return;
+      var predOk = !rd.predio || (v.predio || 'Sem empreendimento') === rd.predio;
       var pts = [];
       (v.defeitos || []).slice().sort(function(a,b){ return a.n - b.n; }).forEach(function(d){
-        var dp = discDoPonto(d);
-        if(!dp.nome){ semDisc++; return; }
-        if(dp.nome !== rd.disc) return;
-        if(dp.sugerida) sugeridas++;
-        pts.push({ d:d, sugerida:dp.sugerida });
+        var dp = discDoPonto(d), ov = rd.ov[d.id];
+        var auto = predOk && dp.nome === rd.disc;
+        var inc = ov !== undefined ? ov : auto;
+        if(!inc){ if(!dp.nome && ov === undefined && predOk) semDisc++; fora.push({ v:v, d:d }); return; }
+        var manual = ov === true && !auto;
+        if(dp.sugerida && !manual) sugeridas++;
+        pts.push({ d:d, sugerida:dp.sugerida && !manual, manual:manual });
       });
       if(pts.length){ grupos.push({ v:v, pts:pts }); total += pts.length; }
     });
@@ -1616,11 +1618,21 @@
         var d = p.d;
         h += '<div class="rd-pt">' + (i === 0 ? cab : '') + '<div class="rdef">' + (d.foto_path ? '<img src="' + esc(d._fotoUrl || '') + '" alt="Foto do ponto ' + d.n + '">' : '') +
           '<div class="rd-plan"><img src="' + esc(v._plantaUrl || '') + '" alt="Planta" crossorigin="anonymous"><span class="pin p-' + esc(d.prioridade) + '" style="left:' + (d.x*100) + '%;top:' + (d.y*100) + '%">' + d.n + '</span></div>' +
-          '<div><div><strong>Ponto ' + d.n + '</strong>, ' + esc(d.ambiente || 'Sem ambiente') + ' (prioridade ' + esc(String(d.prioridade).toLowerCase()) + ')' + (p.sugerida ? ' <span class="rd-tag">sugerida</span>' : '') + '</div>' +
+          '<div><div><strong>Ponto ' + d.n + '</strong>, ' + esc(d.ambiente || 'Sem ambiente') + ' (prioridade ' + esc(String(d.prioridade).toLowerCase()) + ')' + (p.sugerida ? ' <span class="rd-tag">sugerida</span>' : '') + (p.manual ? ' <span class="rd-tag">adicionado</span>' : '') + ' <button class="link no-print" data-act="rd-rem" data-id="' + esc(d.id) + '">Remover do relatório</button></div>' +
           '<div style="white-space:pre-wrap">' + esc(d.descricao) + '</div></div></div></div>';
       });
     });
-    return h + '</div>';
+    h += '</div>';
+    fora.sort(function(a,b){
+      var ta = a.v.titulo || '', tb = b.v.titulo || '';
+      return ta !== tb ? (ta < tb ? -1 : 1) : a.d.n - b.d.n;
+    });
+    h += '<div class="no-print" style="margin-top:22px"><h2 class="sec">Adicionar ponto ao relatório</h2><div class="sub">Pontos que não entraram, de qualquer disciplina, ou que você removeu.</div>' +
+      '<div style="display:flex;gap:8px;margin-top:8px"><select id="rdAdd" style="flex:1;min-width:0"><option value="">Escolha um ponto</option>' +
+      fora.map(function(x){
+        return '<option value="' + esc(x.d.id) + '">' + esc(x.v.titulo) + ', ponto ' + x.d.n + ': ' + esc(shorten((x.d.ambiente || '') + ' ' + (x.d.descricao || ''), 60)) + '</option>';
+      }).join('') + '</select><button class="btn secondary small" data-act="rd-add">Adicionar</button></div></div>';
+    return h;
   }
 
   function viewRelatorio(){
@@ -1952,7 +1964,7 @@
       if(el) el.addEventListener('keydown', function(e){ if(e.key === 'Enter') salvarSenha(); });
     });
     var rdd = $('rdDisc'), rdp = $('rdPredio');
-    if(rdd) rdd.addEventListener('change', function(){ state.rd.disc = rdd.value; render(); });
+    if(rdd) rdd.addEventListener('change', function(){ state.rd.disc = rdd.value; state.rd.ov = {}; render(); });
     if(rdp) rdp.addEventListener('change', function(){ state.rd.predio = rdp.value; render(); });
     var t = $('nTeam');
     if(t) t.addEventListener('change', async function(){
@@ -2072,6 +2084,8 @@
     else if(a === 'novo'){ loadPlantas(); state.cli = { nome:'', cpf:'', email:'', aceite:false }; state.view = 'novo'; state.novo = { folderId:folderIdDaAba(), listId:'', file:null }; if(state.token && !state.folders && !state.hierLoading) loadHierarchy(); else render(); }
     else if(a === 'aba'){ state.aba = t.dataset.id; lsSet('vst_aba', state.aba); render(); }
     else if(a === 'reload-h'){ loadHierarchy(); }
+    else if(a === 'rd-rem'){ state.rd.ov[t.dataset.id] = false; render(); }
+    else if(a === 'rd-add'){ var ra = $('rdAdd'); if(ra && ra.value){ state.rd.ov[ra.value] = true; render(); } }
     else if(a === 'rel-disc'){ state.view = 'rel-disc'; render(); loadAll(); }
     else if(a === 'plantas'){ state.view = 'plantas'; state.confirmDelPl = ''; render(); loadPlantas(); }
     else if(a === 'pl-novo'){
