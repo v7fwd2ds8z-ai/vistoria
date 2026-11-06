@@ -186,10 +186,11 @@
   .rtab th{ background:var(--paper-alt); font-weight:600; }
   .rtab .res{ white-space:nowrap; font-weight:600; }
   .rtab tr{ page-break-inside:avoid; break-inside:avoid; }
-  .rd-plan{ position:relative; width:210px; flex-shrink:0; border:1px solid var(--line); align-self:flex-start; }
+  .rd-plan{ position:relative; width:190px; flex-shrink:0; border:1px solid var(--line); align-self:flex-start; }
   .rd-plan img{ display:block; width:100%; height:auto; }
   .rd-plan .pin{ width:20px; height:20px; font-size:10px; border-width:1.5px; cursor:default; }
-  .rd-unit{ font-size:15px; margin:18px 0 2px; break-after:avoid; page-break-after:avoid; }
+  .rd-pt{ break-inside:avoid; page-break-inside:avoid; }
+  .rd-unit{ font-size:15px; margin:18px 0 2px; }
   .rd-tag{ font-size:11.5px; color:var(--ink-soft); }
   .rd-sel{ display:flex; gap:10px; flex-wrap:wrap; margin:10px 0 4px; }
   .rd-sel > div{ flex:1; min-width:180px; }
@@ -199,6 +200,7 @@
     .rdef img{ width:100%; height:auto; max-height:220px; }
   }
   @media print{
+    @page{ margin:12mm; }
     body{ background:#fff; color:#000; }
     .no-print, .actions, .toast, .busy, .userbar{ display:none !important; }
     .app{ padding:0; max-width:none; }
@@ -1609,13 +1611,13 @@
     if(!total) h += '<div class="empty"><p>Nenhum ponto de ' + esc(rd.disc.toLowerCase()) + ' nas vistorias.</p></div>';
     grupos.forEach(function(g){
       var v = g.v;
-      h += '<h2 class="rd-unit">' + esc(v.titulo) + (v.cliente_nome ? ' <span class="rd-tag">' + esc(v.cliente_nome) + '</span>' : '') + '</h2>';
-      g.pts.forEach(function(p){
+      var cab = '<h2 class="rd-unit">' + esc(v.titulo) + (v.cliente_nome ? ' <span class="rd-tag">' + esc(v.cliente_nome) + '</span>' : '') + '</h2>';
+      g.pts.forEach(function(p, i){
         var d = p.d;
-        h += '<div class="rdef">' + (d.foto_path ? '<img src="' + esc(d._fotoUrl || '') + '" alt="Foto do ponto ' + d.n + '">' : '') +
+        h += '<div class="rd-pt">' + (i === 0 ? cab : '') + '<div class="rdef">' + (d.foto_path ? '<img src="' + esc(d._fotoUrl || '') + '" alt="Foto do ponto ' + d.n + '">' : '') +
           '<div class="rd-plan"><img src="' + esc(v._plantaUrl || '') + '" alt="Planta" crossorigin="anonymous"><span class="pin p-' + esc(d.prioridade) + '" style="left:' + (d.x*100) + '%;top:' + (d.y*100) + '%">' + d.n + '</span></div>' +
           '<div><div><strong>Ponto ' + d.n + '</strong>, ' + esc(d.ambiente || 'Sem ambiente') + ' (prioridade ' + esc(String(d.prioridade).toLowerCase()) + ')' + (p.sugerida ? ' <span class="rd-tag">sugerida</span>' : '') + '</div>' +
-          '<div style="white-space:pre-wrap">' + esc(d.descricao) + '</div></div></div>';
+          '<div style="white-space:pre-wrap">' + esc(d.descricao) + '</div></div></div></div>';
       });
     });
     return h + '</div>';
