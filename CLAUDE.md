@@ -46,6 +46,7 @@ Uma IIFE com JS no estilo ES5 (`var`, `function`, concatenação de strings) mai
 
 Tabela `plantas` (`predio`, `unidade`, `planta_path`, único por par; `supabase/plantas.sql`; leitura para aprovados, escrita só admin). Os nomes são os da pasta e da lista do ClickUp, comparados por `norm()` (trim + minúsculas) em `plantaDe()`. `loadPlantas()` é chamada ao entrar, ao abrir a biblioteca e ao abrir "Nova vistoria"; falha sem derrubar o resto (`state.plantasError`).
 
+- **Renomear pasta no ClickUp**: a planta casa pelo texto do nome, então renomear a pasta (ou a lista) quebra o vínculo até atualizar `plantas.predio`/`unidade` (ver `supabase/renomear-predios.sql`).
 - **Admin**: views `plantas` (lista, exclui) e `plantas-lote` (escolhe a pasta pelo `nFolder` de `hierState(what, true)`, que esconde o seletor de unidade; vários arquivos em `state.lote.itens`; `enviarPlantas()` converte (PDF→JPEG ou compressão), sobe em `plantas/` e faz `upsert` por `predio,unidade`). Itens que falham continuam na lista.
 - **Uso**: `viewNovo` mostra a planta cadastrada quando `plantaDe(pasta, lista)` existe e `state.novo.outra` é falso; `createVistoria` então reaproveita o `planta_path` em vez de subir arquivo. A vistoria guarda só o caminho, e os arquivos nunca são sobrescritos (nome aleatório), então trocar a planta na biblioteca não altera vistorias antigas.
 
