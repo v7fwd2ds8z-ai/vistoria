@@ -721,7 +721,7 @@
     if(!folder || !list){ toast('Escolha o prédio e a unidade.', true); return; }
     var er = clienteErro();
     if(er){ toast(er[1], true); var f0 = $(er[0]); if(f0) f0.focus(); return; }
-    var pl = plantaDe(folder.name, list.name), usarLib = !!pl && !n.outra;
+    var pl = plantaDe(folder.name, list.name, list.id), usarLib = !!pl && !n.outra;
     if(!usarLib && !n.file){ toast('Envie a planta da unidade.', true); return; }
     try{
       var path;
@@ -811,9 +811,13 @@
 
   // ---- biblioteca de plantas ----
   function norm(x){ return semAcento(x).trim(); }
-  function plantaDe(predio, unidade){
+  function plantaDe(predio, unidade, listId){
+    if(listId){
+      var porId = state.plantas.filter(function(x){ return x.list_id === listId; })[0];
+      if(porId) return porId;
+    }
     var a = norm(predio), b = norm(unidade);
-    return state.plantas.filter(function(x){ return norm(x.predio) === a && norm(x.unidade) === b; })[0] || null;
+    return state.plantas.filter(function(x){ return !x.list_id && norm(x.predio) === a && norm(x.unidade) === b; })[0] || null;
   }
   function listasDaPasta(){
     var f = (state.folders || []).filter(function(x){ return x.id === state.novo.folderId; })[0];
@@ -858,7 +862,9 @@
         if(/pdf$/i.test(it.file.type) || /\.pdf$/i.test(it.file.name)) blob = await pdfToJpeg(it.file);
         else blob = await compressImage(it.file, 2000, 8 * 1024 * 1024);
         var path = await uploadFile(blob, 'plantas');
-        var r = await supabase.from('plantas').upsert({ predio:folder.name, unidade:nome, planta_path:path, created_by:state.session.user.email, updated_at:new Date().toISOString() }, { onConflict:'predio,unidade' });
+        var linha = { predio:folder.name, unidade:nome, list_id:(ls ? ls.id : null), planta_path:path, created_by:state.session.user.email, updated_at:new Date().toISOString() };
+        var r = await supabase.from('plantas').upsert(linha, { onConflict:(ls ? 'list_id' : 'predio,unidade') });
+        if(r.error && ls) r = await supabase.from('plantas').upsert(linha, { onConflict:'predio,unidade' });
         if(r.error) throw new Error(sbErrorText(r.error));
         ok++;
       }catch(e){ falhas.push(it); }
@@ -1512,7 +1518,7 @@
     h += clienteFieldsHtml();
     var fo = (state.folders || []).filter(function(x){ return x.id === n.folderId; })[0];
     var li = fo && fo.lists.filter(function(x){ return x.id === n.listId; })[0];
-    var pl = fo && li ? plantaDe(fo.name, li.name) : null;
+    var pl = fo && li ? plantaDe(fo.name, li.name, li.id) : null;
     if(pl && !n.outra){
       h += '<label class="lbl">Planta da unidade</label><div class="card" style="cursor:default"><div style="display:flex;gap:12px;align-items:center"><img id="plantaPrev" data-path="' + esc(pl.planta_path) + '" alt="Planta cadastrada" style="width:110px;height:80px;object-fit:contain;background:var(--paper-alt);border:1px solid var(--line);border-radius:var(--radius)">' +
         '<div><div class="t">Usando a planta cadastrada</div><div class="m">' + esc(pl.predio) + ' / ' + esc(pl.unidade) + '</div><button class="link" data-act="planta-outra">Usar outra planta</button></div></div></div>';
@@ -1718,7 +1724,7 @@
       h += '<h2 class="sec">' + itens.length + (itens.length === 1 ? ' planta' : ' plantas') + '</h2><datalist id="unList">' + listasDaPasta().map(function(l){ return '<option value="' + esc(l.name) + '">'; }).join('') + '</datalist><div class="cards">' +
         itens.map(function(it, i){
           var ex = folder ? nomeNaLista(it.unidade) : null;
-          var aviso = !folder ? '<span class="chip">Escolha o prédio</span>' : (ex ? '<span class="chip green">Unidade encontrada</span>' + (plantaDe(folder.name, ex.name) ? ' <span class="chip amber">Substitui a atual</span>' : '') : '<span class="chip orange">Nome não encontrado no ClickUp</span>');
+          var aviso = !folder ? '<span class="chip">Escolha o prédio</span>' : (ex ? '<span class="chip green">Unidade encontrada</span>' + (plantaDe(folder.name, ex.name, ex.id) ? ' <span class="chip amber">Substitui a atual</span>' : '') : '<span class="chip orange">Nome não encontrado no ClickUp</span>');
           return '<div class="card pedido" style="flex-direction:column;align-items:stretch"><div class="m">' + esc(it.file.name) + '</div>' +
             '<div style="display:flex;gap:8px;align-items:center"><input id="pU' + i + '" list="unList" value="' + esc(it.unidade) + '" maxlength="120" style="flex:1" aria-label="Unidade"><button class="btn secondary small" data-act="pl-rm" data-id="' + i + '">Tirar</button></div>' +
             '<div style="margin-top:6px">' + aviso + '</div></div>';
