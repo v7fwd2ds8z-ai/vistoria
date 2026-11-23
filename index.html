@@ -810,7 +810,7 @@
   }
 
   // ---- biblioteca de plantas ----
-  function norm(x){ return String(x || '').trim().toLowerCase(); }
+  function norm(x){ return semAcento(x).trim(); }
   function plantaDe(predio, unidade){
     var a = norm(predio), b = norm(unidade);
     return state.plantas.filter(function(x){ return norm(x.predio) === a && norm(x.unidade) === b; })[0] || null;
